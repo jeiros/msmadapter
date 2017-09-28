@@ -2,7 +2,8 @@ import mdtraj
 from subprocess import call, PIPE
 import os
 from string import Template
-
+import shutil
+from glob import glob
 
 def get_ftrajs(traj_dict, featurizer):
     """
@@ -86,7 +87,9 @@ def write_cpptraj_script(traj, top, frame1=1, frame2=1, outfile=None,
 
     script_dir = os.path.dirname(__file__)  # Absolute path the script is in
     relative_path = 'templates/template.cpptraj'
-    with open(relative_path, 'r') as f:
+    shutil.copyfile(
+        os.path.join(script_dir, relative_path), './template.cpptraj')
+    with open('./template.cpptraj', 'r') as f:
         cmds = Template(f.read())
     cmds = cmds.substitute(
         top=top,
@@ -110,7 +113,9 @@ def write_tleap_script(pdb_file='seed.pdb', lig_dir='lig_dir',
                        run=False):
     script_dir = os.path.dirname(__file__)  # Absolute path the script is in
     relative_path = 'templates/template.tleap'
-    with open(relative_path, 'r') as f:
+    shutil.copyfile(
+        os.path.join(script_dir, relative_path), './template.tleap')
+    with open('./template.tleap', 'r') as f:
         cmds = Template(f.read())
     cmds = cmds.substitute(
         pdb_file=pdb_file,
@@ -125,3 +130,10 @@ def write_tleap_script(pdb_file='seed.pdb', lig_dir='lig_dir',
         if run:
             call(['tleap', '-f', path], stdout=PIPE)
     return cmds
+
+def create_symlinks(files, dst_folder):
+    fns_list = glob(files)
+    for fn in fns_list:
+        fname_trimmed = fn.split('/')[-1]
+        dst_fname = os.path.join(dst_folder, fname_trimmed)
+        os.symlink(fn, dst_fname)
