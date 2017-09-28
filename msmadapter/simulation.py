@@ -67,10 +67,7 @@ class App(object):
             meta = gather_metadata('/'.join([self.data_folder, '*nc']), parser)
         else:
             if not isinstance(meta, pd.DataFrame):
-                if os.path.exists(meta):
-                    meta = load_meta(meta)
-                else:
-                    raise IOError('{} does not exist'.format(meta))
+                meta = load_meta(meta)
         return meta
 
     @property
@@ -113,7 +110,7 @@ class Adaptive(object):
             if self.current_epoch == self.nepochs:
                 finished = True
 
-    def find_respawn_fame(self, percentile=0.5):
+    def find_respawn_conformations(self, percentile=0.5):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
         We increase (or decrease) the percentile threshold of populated microstates until we have as many new candidates
@@ -130,14 +127,14 @@ class Adaptive(object):
             msm = self.model.named_steps['msm']
         else:
             msm = self.model.steps[-1]
-            if not getattr(msm, '__module__', None) == msmbuilder.msm.__name__:
+            if not getattr(msm, '__module__') == msmbuilder.msm.__name__:
                 raise ValueError('The last step in the model does not belong to the msmbuilder.msm module')
 
         if 'clusterer' in self.model.named_steps.keys():
             clusterer = self.model.named_steps['clusterer']
         else:
             clusterer = self.model.steps[-2]
-        if not getattr(clusterer, '__module__', None) == msmbuilder.cluster.__name__:
+        if not getattr(clusterer, '__module__') == msmbuilder.cluster.__name__:
             raise ValueError('The penultimate step in the model does not belong to the msmbuilder.cluster module')
 
         # We now initiate the search for candidate frames amongst our trajectories
@@ -163,7 +160,7 @@ class Adaptive(object):
                     low_cluster_ids.pop()
                 percentile -= 0.5
 
-        logger.info('Found {} frames which were below {:02f} percentile'.format(percentile))
+        logger.info('Found {:d} frames which were below {:02f} percentile'.format(len(low_cluster_ids), percentile))
 
         if self.ttrajs is None:
             logger.warning('The tica-transformed trajs have not been calculated prior to calling find_respawn_frame')
@@ -202,25 +199,30 @@ class Adaptive(object):
             3) The tICA object
         :return ttrajs: A dict of tica-transformed trajectories, represented as np.arrays of shape (n_frames, n_components)
         """
+        # Assume order of steps in model
+        # Then I try to check as best as I know that it's correct
         featurizer = self.model.steps[0][1]
         scaler = self.model.steps[1][1]
-        tica = self.model.steps[2][1]
-        if hasattr(featurizer, 'fit_transform'):
+        decomposer = self.model.steps[2][1]
+
+        if getattr(featurizer, '__module__') == msmbuilder.featurizer.__name__:
             logger.info('Featurizing trajs')
             ftrajs = get_ftrajs(self.traj_dict, featurizer)
-        if hasattr(scaler, 'fit_transform'):
-            if not isinstance(scaler, tICA):
+
+            if getattr(scaler, '__module__') == msmbuilder.preprocessing.__name__:
                 logger.info('Scaling ftrajs')
                 sctrajs = get_sctrajs(ftrajs, scaler)
-            elif isinstance(scaler, tICA):
-                logger.warning('Second step in model is tICA and not a scaler')
-                tica = scaler
+            elif getattr(decomposer, '__module__') == msmbuilder.decomposition.__name__:
+                logger.warning('Second step in model is a decomposer and not a scaler')
+                decomposer = scaler
                 sctrajs = ftrajs  # We did not do any scaling of ftrajs
-        if hasattr(tica, 'fit_transform') and isinstance(tica, tICA):
+            else:
+                logger.warning('Could not find a scaler or decomposer in your model.')
+
             logger.info('Getting output of tICA')
-            ttrajs = get_ttrajs(sctrajs, tica)
+            ttrajs = get_ttrajs(sctrajs, decomposer)
         else:
-            raise ValueError('The model you passed has no steps with fit_transform methods.')
+            raise ValueError('The first step in the model does not belong to the msmbuilder.featurizer module')
         self.ttrajs = ttrajs
         return ttrajs
 
@@ -326,4 +328,4 @@ if __name__ == "__main__":
     app = App(meta='meta.pandas.pickl')
     ad = Adaptive(app=app, stride=20)
     ad.fit_model()
-    ad.find_respawn_fame()
+    ad.find_respawn_conformations()
