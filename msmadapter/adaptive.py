@@ -1,98 +1,334 @@
-from mdrun.Simulation import Simulation
 import os
+import numpy
+from msmbuilder.io import load_generic, save_generic, gather_metadata, NumberedRunsParser, load_meta
+from msmbuilder.io.sampling import sample_states
+from sklearn.pipeline import Pipeline
+import msmbuilder
+from msmbuilder.decomposition import tICA, PCA
+from msmbuilder.featurizer import DihedralFeaturizer
+from msmbuilder.cluster import MiniBatchKMeans
+from msmbuilder.msm import MarkovStateModel
+from msmbuilder.preprocessing import RobustScaler
+import logging
+import mdtraj
+import pandas as pd
+from multiprocessing import Pool
 from glob import glob
+from .plot_utils import plot_spawns
+
+logger = logging.getLogger()
 
 
-def pbs_settings(walltime='72:0:0', nnodes=1, ncpus=1, ngpus=1, mem='2gb',
-                 host='', queue='gpgpu', gpu_type='P100'):
-    return dict(
-        walltime=walltime,
-        nnodes=nnodes,
-        ncpus=ncpus,
-        ngpus=ngpus,
-        mem=mem,
-        host=host,
-        queue=queue,
-        gpu_type=gpu_type
+class App(object):
+
+    def __init__(self, generator_folder='generators', data_folder='data',
+                 input_folder='input', filtered_folder='filtered',
+                 model_folder='model', ngpus=4, meta=None):
+        """
+        :param generator_folder:
+        :param data_folder:
+        :param input_folder:
+        :param filtered_folder:
+        :param model_folder:
+        :param ngpus:
+        """
+        self.generator_folder = generator_folder
+        self.data_folder = data_folder
+        self.input_folder = input_folder
+        self.filtered_folder = filtered_folder
+        self.model_folder = model_folder
+        self.ngpus = ngpus
+        self.meta = self.build_metadata(meta)
+
+    def __repr__(self):
+        return 'App(generator_folder={}, data_folder={}, input_folder={}, filtered_folder={}, model_folder={}, ngpus={})'.format(
+            self.generator_folder,
+            self.data_folder,
+            self.input_folder,
+            self.filtered_folder,
+            self.model_folder,
+            self.ngpus
+        )
+
+    def initialize_folders(self):
+        create_folder(self.generator_folder)
+        create_folder(self.data_folder)
+        create_folder(self.input_folder)
+        create_folder(self.filtered_folder)
+        create_folder(self.model_folder)
+
+    def build_metadata(self, meta):
+        """Builds an msmbuilder metadata object"""
+        if meta is None:
+            parser = NumberedRunsParser(
+                traj_fmt='run-{run}.nc',
+                top_fn='structure.prmtop',
+                step_ps=200
+            )
+            meta = gather_metadata('/'.join([self.data_folder, '*nc']), parser)
+        else:
+            if not isinstance(meta, pd.DataFrame):
+                meta = load_meta(meta)
+        return meta
+
+    @property
+    def number_of_trajectories(self):
+        return len(glob('/'.join([self.data_folder, '*nc'])))
+
+
+class Adaptive(object):
+    """
+
+    """
+
+    def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600, timestep=200, model=None, app=None):
+        self.nmin = nmin
+        self.nmax = nmax
+        self.nepochs = nepochs
+        self.stride = stride
+        self.sleeptime = sleeptime
+        if app is None:
+            self.app = App()
+        else:
+            self.app = app
+        if not isinstance(self.app, App):
+            raise ValueError('self.app is not an App object')
+        self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
+        self.model_pkl_fname = '/'.join([self.app.model_folder, 'model.pkl'])
+        self.model = self.build_model(model)
+        self.ttrajs = None
+        self.traj_dict = None
+
+    def __repr__(self):
+        return 'Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={}, timestep={}, model={}, app={})'.format(
+            self.nmin, self.nmax, self.nepochs, self.stride, self.sleeptime, self.timestep, self.model, repr(self.app))
+
+    def run(self):
+        """
+        :return:
+        """
+        finished = False
+        while not finished:
+            if self.current_epoch == self.nepochs:
+                finished = True
+
+    def find_respawn_conformations(self, percentile=0.5):
+        """
+        Find candidate frames in the trajectories to spawn new simulations from.
+        We increase (or decrease) the percentile threshold of populated microstates until we have as many new candidates
+        as GPUs available.
+
+        :param percentile: float, The percentile below which to look for low populated microstates of the MSM
+        :return chosen_frames: a list of tuples, each tuple being (traj_id, frame_id)
+        """
+
+        # First, identify the MarkovStateModel and Clusterer objects from the Pipeline model
+        # We try to look by name first, if the user has provided a model with
+        # different named steps than assumend, we look by position
+        if 'msm' in self.model.named_steps.keys():
+            msm = self.model.named_steps['msm']
+        else:
+            msm = self.model.steps[-1]
+            if not getattr(msm, '__module__') == msmbuilder.msm.__name__:
+                raise ValueError('The last step in the model does not belong to the msmbuilder.msm module')
+
+        if 'clusterer' in self.model.named_steps.keys():
+            clusterer = self.model.named_steps['clusterer']
+        else:
+            clusterer = self.model.steps[-2]
+        if not getattr(clusterer, '__module__') == msmbuilder.cluster.__name__:
+            raise ValueError('The penultimate step in the model does not belong to the msmbuilder.cluster module')
+
+        # We now initiate the search for candidate frames amongst our trajectories
+        logger.info('Looking for low populated microstates')
+        logger.info('Initial percentile threshold set to {:02f}'.format(percentile))
+        low_cluster_ids = []
+        while not len(low_cluster_ids) == self.app.ngpus:
+            low_populated_msm_states = numpy.where(
+                msm.populations_ < numpy.percentile(msm.populations_, percentile)
+            )[0]  # numpy.where gives back a tuple with empty second element
+            low_cluster_ids = []
+
+            for state_id in low_populated_msm_states:
+                for c_id, msm_id in msm.mapping_.items():
+                    if msm_id == state_id:
+                        low_cluster_ids.append(c_id)
+
+            if len(low_cluster_ids) < self.app.ngpus:
+                percentile += 0.5
+
+            if len(low_cluster_ids) > self.app.ngpus:
+                if (len(low_cluster_ids) - 1) == self.app.ngpus:
+                    low_cluster_ids.pop()
+                percentile -= 0.5
+
+        logger.info('Found {:d} frames which were below {:02f} percentile'.format(len(low_cluster_ids), percentile))
+
+        if self.ttrajs is None:
+            self.ttrajs = self.get_tica_trajs()
+
+        return sample_states(
+            trajs=self.ttrajs,
+            state_centers=clusterer.cluster_centers_[low_cluster_ids]
+        )
+
+    def get_traj_dict(self):
+        """
+        Load the trajectories in the disk as specified by the metadata object in parallel
+        :return traj_dict: A dictionary of mdtraj.Trajectory objects
+        """
+        with Pool() as pool:
+            traj_dict = dict(pool.imap_unordered(self.load_trajectories, self.app.meta.iterrows()))
+        return traj_dict
+
+    def fit_model(self):
+        """
+        Fit the adaptive model onto the trajectories
+        """
+        logger.info('Fitting model')
+        if self.traj_dict is None:
+            self.traj_dict = self.get_traj_dict()
+        self.model.fit(self.traj_dict.values())
+
+    def get_tica_trajs(self):
+        """
+        Step through each of the steps of the adaptive model and recover the transformed trajectories after each step,
+        until we reach the final tICA-transformed trajectories. We assume that the steps in the model are:
+            1) A featurizer object
+            2) A scaler object (optional)
+            3) The tICA object
+        :return ttrajs: A dict of tica-transformed trajectories, represented as np.arrays of shape (n_frames, n_components)
+        """
+        # Assume order of steps in model
+        # Then I try to check as best as I know that it's correct
+        featurizer = self.model.steps[0][1]
+        scaler = self.model.steps[1][1]
+        decomposer = self.model.steps[2][1]
+
+        if getattr(featurizer, '__module__') == msmbuilder.featurizer.featurizer.__name__:
+            logger.info('Featurizing trajs')
+            ftrajs = get_ftrajs(self.traj_dict, featurizer)
+
+            if getattr(scaler, '__module__') == msmbuilder.preprocessing.__name__:
+                logger.info('Scaling ftrajs')
+                sctrajs = get_sctrajs(ftrajs, scaler)
+            elif isinstance(scaler, tICA) or isinstance(scaler, PCA):
+                logger.warning('Second step in model is a decomposer and not a scaler')
+                decomposer = scaler
+                sctrajs = ftrajs  # We did not do any scaling of ftrajs
+            else:
+                logger.warning('Could not find a scaler or decomposer in your model.')
+
+            logger.info('Getting output of tICA')
+            ttrajs = get_ttrajs(sctrajs, decomposer)
+        else:
+            raise ValueError('The first step in the model does not belong to the msmbuilder.featurizer module')
+        return ttrajs
+
+    def load_trajectories(self, irow):
+        """
+        Load each trajectory in the rows of an msmbuilder.metadata object
+        :param irow: iterable coming from pd.DataFrame.iterrow method
+        :return i, traj: The traj id (starting at 0) and the mdtraj.Trajectory object
+        """
+        i, row = irow
+        logger.info('Loading {}'.format(row['traj_fn']))
+        traj = mdtraj.load(row['traj_fn'], top=row['top_fn'], stride=self.stride)
+        return i, traj
+
+    def build_model(self, user_defined_model=None):
+        """
+        Load or build a model (Pipeline from scikit-learn) to do all the transforming and fitting
+        :param user_defined_model: Either a string (to load from disk) or a Pipeline object to use as model
+        :return model: Return the model back
+        """
+        if user_defined_model is None:
+            if os.path.exists(self.model_pkl_fname):
+                logger.info('Loading model pkl file {}'.format(self.model_pkl_fname))
+                model = load_generic(self.model_pkl_fname)
+            else:
+                logger.info('Building default model')
+                # build a lag time of 1 ns for tICA and msm
+                # if the stride is too big and we can't do that, just use 1 frame and report how much that is in ns
+                lag_time = max(1, int(1 / self.timestep))
+                if lag_time == 1:
+                    logger.warning('Using a lag time of {:.2f} ns for the tICA and MSM'.format(self.timestep))
+                model = Pipeline([
+                    ('feat', DihedralFeaturizer()),
+                    ('scaler', RobustScaler()),
+                    ('tICA', tICA(lag_time=lag_time, kinetic_mapping=True, n_components=10)),
+                    ('clusterer', MiniBatchKMeans(n_clusters=200)),
+                    ('msm', MarkovStateModel(lag_time=lag_time))
+                ])
+        else:
+            if not isinstance(user_defined_model, Pipeline):
+                raise ValueError('model is not an sklearn.pipeline.Pipeline object')
+            else:
+                logger.info('Using user defined model')
+                model = user_defined_model
+        return model
+
+    def _save_model(self):
+        """
+        Save a model to disk in pickle format
+        """
+        save_generic(self.model, self.model_pkl_fname)
+
+
+def get_ftrajs(traj_dict, featurizer):
+    """
+    Featurize a dictionary of mdtraj.Trajectory objects
+    :param traj_dict: The dictionary of trajectories
+    :param featurizer: A featurizer object which must have been fit first
+    :return ftrajs: A dict of featurized trajectories
+    """
+    ftrajs = {}
+    for k, v in traj_dict.items():
+        ftrajs[k] = featurizer.partial_transform(v)
+    return ftrajs
+
+
+def get_sctrajs(ftrajs, scaler):
+    """
+    Scale a dictionary of featurized trajectories
+    :param traj_dict: The dictionary of featurized trajectories, represented as np.arrays of shape (n_frames, n_features)
+    :param scaler: A scaler object which must have been fit first
+    :return ftrajs: A dict of scaled trajectories, represented as np.arrays of shape (n_frames, n_features)
+    """
+    sctrajs = {}
+    for k, v in ftrajs.items():
+        sctrajs[k] = scaler.partial_transform(v)
+    return sctrajs
+
+
+def get_ttrajs(sctrajs, tica):
+    """
+    Reduce the dimensionality of a dictionary of scaled or featurized trajectories
+    :param traj_dict: The dictionary of featurized/scaled trajectories, represented as np.arrays of shape (n_frames, n_features)
+    :param tica: A tICA object which must have been fit first
+    :return ttrajs: A dict of tica-transformed trajectories, represented as np.arrays of shape (n_frames, n_components)
+    """
+    ttrajs = {}
+    for k, v in sctrajs.items():
+        ttrajs[k] = tica.partial_transform(v)
+    return ttrajs
+
+
+def create_folder(folder_name):
+    if not os.path.exists(folder_name):
+        os.mkdir(folder_name)
+
+
+def generate_traj_from_stateinds(inds, meta):
+    traj = mdtraj.join(
+        mdtraj.load_frame(meta.loc[traj_i]['traj_fn'],
+                          top=meta.loc[traj_i]['top_fn'],
+                          frame=frame_i) for traj_i, frame_i in inds
     )
+    return traj
 
-
-def simulation_details(system_name="protein", inpcrd_file="structure.inpcrd",
-                       topology_file="structure.prmtop", start_rst="Heated_eq.rst",
-                       input_file="Production_cmds.in", start_time=0,
-                       final_time=500, job_length=50, job_directory="/work/je714/protein",
-                       cuda_version="8.0.44", binary_location="pmemd.cuda_SPFP",
-                       pre_simulation_cmd=None, pre_simulation_type="gpu"):
-    if pre_simulation_cmd is None:
-        pre_simulation_cmd = [
-            "{} -O -i premin.in -o premin.out -c $inpcrd -p $prmtop -r premin.rst -ref $inpcrd".format(binary_location),
-            "{} -O -i sandermin1.in -o sandermin1.out -c premin.rst -p $prmtop -r sandermin1.rst".format(binary_location),
-            "{} -O -i 02_Heat.in -o 02_Heat.out -c sandermin1.rst -p $prmtop -r 02_Heat.rst -ref sandermin1.rst -x 02_Heat.nc".format(binary_location),
-            "{} -O -i 03_Heat2.in -o 03_Heat2.out -c 02_Heat.rst -p $prmtop -r Heated_eq.rst -ref 02_Heat.rst -x 03_Heat2.nc".format(binary_location)
-        ]
-    return dict(
-        system_name=system_name,
-        inpcrd_file=inpcrd_file,
-        topology_file=topology_file,
-        start_rst=start_rst,
-        input_file=input_file,
-        start_time=start_time,
-        final_time=final_time,
-        job_length=job_length,
-        job_directory=job_directory,
-        cuda_version=cuda_version,
-        binary_location=binary_location,
-        pre_simulation_cmd=pre_simulation_cmd,
-        pre_simulation_type=pre_simulation_type
-    )
-
-
-def local_machine_details(user="je714", hostname="ch-knuth.ch.ic.ac.uk",
-                          destination="/Users/je714/protein"):
-    return dict(
-        user=user,
-        hostname=hostname,
-        destination=destination
-    )
-
-
-def master_node_details(user_m="username", hostname_m="master_node-hostname",
-                        job_directory_m="/home/username/protein1"):
-    return dict(
-        user_m=user_m,
-        hostname_m=hostname_m,
-        job_directory_m=job_directory_m,
-    )
-
-
-def generate_mdrun_skeleton(scheduler='pbs', HPC_job='True', pbs_settings_kwargs=None,
-                            simulation_details_kwargs=None, local_machine_kwargs=None, master_node_kwargs=None):
-    if pbs_settings_kwargs is None:
-        pbs_settings_kwargs = {}
-    if simulation_details_kwargs is None:
-        simulation_details_kwargs = {}
-    if local_machine_kwargs is None:
-        local_machine_kwargs = {}
-    if master_node_kwargs is None:
-        master_node_kwargs = {}
-    return dict(
-        scheduler=scheduler,
-        HPC_job=HPC_job,
-        pbs_settings=pbs_settings(**pbs_settings_kwargs),
-        simulation_details=simulation_details(**simulation_details_kwargs),
-        local_machine=local_machine_details(**local_machine_kwargs),
-        master_node=master_node_details(**master_node_kwargs)
-    )
-
-
-def remove_pbs_files():
-    pbs_fnames = glob('*.pbs')
-    for fname in pbs_fnames:
-        os.remove(fname)
-
-if __name__ == '__main__':
-    skel = generate_mdrun_skeleton()
-    print(skel)
-    sim = Simulation(skel)
-    sim.writeSimulationFiles()
-    remove_pbs_files()
+if __name__ == "__main__":
+    app = App(meta='meta.pandas.pickl')
+    ad = Adaptive(app=app, stride=20)
+    ad.fit_model()
+    ad.find_respawn_conformations()
