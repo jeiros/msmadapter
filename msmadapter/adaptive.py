@@ -16,9 +16,12 @@ import pandas as pd
 from multiprocessing import Pool
 from glob import glob
 from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
-    write_cpptraj_script, write_tleap_script
-from functools import partial
+    write_cpptraj_script, write_tleap_script, create_symlinks
 from time import sleep
+from parmed.amber import AmberParm
+from parmed.tools import HMassRepartition
+from .pbs_settings import generate_mdrun_skeleton, simulate_in_P100s
+from mdrun.Simulation import Simulation
 
 logger = logging.getLogger()
 
@@ -87,7 +90,7 @@ class App(object):
     def prepare_spawns(self, spawns, epoch):
         sim_count = 0
         for traj_id, frame_id in spawns:
-            logger.info('Building {}th simulation of epoch {}'.format(sim_count, epoch))
+            logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
             folder_name = 'e{:02d}s{:02d}_t{:03d}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
             destination = os.path.join(self.input_folder, folder_name)
             create_folder(destination)
@@ -109,8 +112,36 @@ class App(object):
                 path=os.path.join(destination, 'script.tleap')
             )
             sim_count += 1
+            # Apply hmr to new topologies
+            self.hmr_prmtop(os.path.join(destination, 'structure.prmtop'))
         epoch += 1
         return epoch
+
+    def hmr_prmtop(self, top_fn, save=True):
+        top = AmberParm(top_fn)
+        hmr = HMassRepartition(top)
+        hmr.execute()
+        if save:
+            top_out_fn = top_fn.split('.')[0]
+            top_out_fn += '_hmr.prmtop'
+            top.save(top_out_fn)
+        return top
+
+
+    def prepare_PBS_jobs(self, folders):
+        folder_fnames_list = glob(folders)
+        cwd = os.getcwd()
+        for input_folder in folder_fnames_list:
+            system_name = input_folder.split('/')[-1]
+            data_folder = os.path.realpath(os.path.join(self.data_folder, system_name))
+            if not os.path.exists(data_folder):
+                os.mkdir(data_folder)
+            os.chdir(data_folder)
+            create_symlinks(files='structure.*', dst_folder=data_folder)
+            skeleton = simulate_in_P100s(generate_mdrun_skeleton, system_name=system_name, destination=os.path.realpath(data_folder))
+            sim = Simulation(skeleton)
+            sim.writeSimulationFiles()
+            os.chdir(cwd)
 
 
 class Adaptive(object):
@@ -137,6 +168,7 @@ class Adaptive(object):
         self.ttrajs = None
         self.traj_dict = None
         self.current_epoch = self.app.ongoing_trajs
+        self.spawns = None
 
     def __repr__(self):
         return '''Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={},
@@ -155,8 +187,8 @@ class Adaptive(object):
             else:
                 self.app.initialize_folders()
                 self.fit_model()
-                spawns = self.find_respawn_conformations()
-                self.current_epoch = self.app.prepare_spawns(spawns, self.current_epoch)
+                self.spawns = self.find_respawn_conformations()
+                self.current_epoch = self.app.prepare_spawns(self.spawns, self.current_epoch)
                 logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
                 sleep(self.sleeptime)
 
@@ -191,7 +223,8 @@ class Adaptive(object):
         logger.info('Looking for low populated microstates')
         logger.info('Initial percentile threshold set to {:02f}'.format(percentile))
         low_cluster_ids = []
-        while not len(low_cluster_ids) == self.app.ngpus:
+        iterations = 0  # to avoid getting stuck in the search
+        while (not len(low_cluster_ids) == self.app.ngpus) or (iterations > 1000):
             low_populated_msm_states = numpy.where(
                 msm.populations_ < numpy.percentile(msm.populations_, percentile)
             )[0]  # numpy.where gives back a tuple with empty second element
@@ -201,6 +234,7 @@ class Adaptive(object):
                 for c_id, msm_id in msm.mapping_.items():
                     if msm_id == state_id:
                         low_cluster_ids.append(c_id)
+                iterations += 1
 
             if len(low_cluster_ids) < self.app.ngpus:
                 percentile += 0.5
@@ -209,6 +243,9 @@ class Adaptive(object):
                 if (len(low_cluster_ids) - 1) == self.app.ngpus:
                     low_cluster_ids.pop()
                 percentile -= 0.5
+            logger.info('Percentiles is at {} and found {} frames'.format(percentile, len(low_cluster_ids)))
+
+        logger.info('Finished after {} iterations'.format(iterations))
 
         logger.info('Found {:d} frames which were below {:02f} percentile'.format(len(low_cluster_ids), percentile))
 
