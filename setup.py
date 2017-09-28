@@ -1,12 +1,14 @@
-from distutils.core import setup
+from setuptools import setup, find_packages
 
 setup(
     name='MSMadapter',
     version='0.1',
-    packages=['msmadapter'],
-    url='',
+    packages=find_packages(),
     license='MIT',
     author='Juan Eiros',
     author_email='jeiroz@gmail.com',
-    description=''
+    package_data={
+        'MSMadapter' : ['README.md', 'requirements.txt']
+    },
+    include_package_data=True
 )
