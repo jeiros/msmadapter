@@ -1,0 +1,4 @@
+parm ${top}
+trajin ${traj} ${frame1} ${frame2}
+trajout ${outfile}
+run

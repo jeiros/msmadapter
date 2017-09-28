@@ -66,7 +66,8 @@ def master_node_details(user_m="username", hostname_m="master_node-hostname",
 
 
 def generate_mdrun_skeleton(scheduler='pbs', HPC_job='True', pbs_settings_kwargs=None,
-                            simulation_details_kwargs=None, local_machine_kwargs=None, master_node_kwargs=None):
+                            simulation_details_kwargs=None, local_machine_kwargs=None,
+                            master_node_kwargs=None):
     if pbs_settings_kwargs is None:
         pbs_settings_kwargs = {}
     if simulation_details_kwargs is None:

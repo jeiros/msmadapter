@@ -1,6 +1,7 @@
 import os
 import numpy
-from msmbuilder.io import load_generic, save_generic, gather_metadata, NumberedRunsParser, load_meta
+from msmbuilder.io import load_generic, save_generic, gather_metadata, \
+    NumberedRunsParser, load_meta
 from msmbuilder.io.sampling import sample_states
 from sklearn.pipeline import Pipeline
 import msmbuilder
@@ -14,7 +15,10 @@ import mdtraj
 import pandas as pd
 from multiprocessing import Pool
 from glob import glob
-from .plot_utils import plot_spawns
+from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
+    write_cpptraj_script, write_tleap_script
+from functools import partial
+from time import sleep
 
 logger = logging.getLogger()
 
@@ -41,7 +45,8 @@ class App(object):
         self.meta = self.build_metadata(meta)
 
     def __repr__(self):
-        return 'App(generator_folder={}, data_folder={}, input_folder={}, filtered_folder={}, model_folder={}, ngpus={})'.format(
+        return '''App(generator_folder={}, data_folder={}, input_folder={},
+                    filtered_folder={}, model_folder={}, ngpus={})'''.format(
             self.generator_folder,
             self.data_folder,
             self.input_folder,
@@ -72,8 +77,40 @@ class App(object):
         return meta
 
     @property
-    def number_of_trajectories(self):
+    def finished_trajs(self):
         return len(glob('/'.join([self.data_folder, '*nc'])))
+
+    @property
+    def ongoing_trajs(self):
+        return len(glob('/'.join([self.input_folder, '*nc'])))
+
+    def prepare_spawns(self, spawns, epoch):
+        sim_count = 0
+        for traj_id, frame_id in spawns:
+            logger.info('Building {}th simulation of epoch {}'.format(sim_count, epoch))
+            folder_name = 'e{:02d}s{:02d}_t{:03d}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
+            destination = os.path.join(self.input_folder, folder_name)
+            create_folder(destination)
+            write_cpptraj_script(
+                traj=self.meta.loc[traj_id]['traj_fn'],
+                top=self.meta.loc[traj_id]['top_fn'],
+                frame1=frame_id,
+                frame2=frame_id,
+                outfile=os.path.join(destination, 'seed.pdb'),
+                path=os.path.join(destination, 'script.cpptraj'),
+                run=True
+            )
+            os.symlink('../../CA2.prep', os.path.join(destination, 'CA2.prep'))
+            write_tleap_script(
+                pdb_file=os.path.join(destination, 'seed.pdb'),
+                lig_dir=None,
+                run=True,
+                system_name=os.path.join(destination, 'structure'),
+                path=os.path.join(destination, 'script.tleap')
+            )
+            sim_count += 1
+        epoch += 1
+        return epoch
 
 
 class Adaptive(object):
@@ -81,7 +118,8 @@ class Adaptive(object):
 
     """
 
-    def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600, timestep=200, model=None, app=None):
+    def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600,
+                 model=None, app=None):
         self.nmin = nmin
         self.nmax = nmax
         self.nepochs = nepochs
@@ -94,14 +132,17 @@ class Adaptive(object):
         if not isinstance(self.app, App):
             raise ValueError('self.app is not an App object')
         self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
-        self.model_pkl_fname = '/'.join([self.app.model_folder, 'model.pkl'])
+        self.model_pkl_fname = os.path.join(self.app.model_folder, 'model.pkl')
         self.model = self.build_model(model)
         self.ttrajs = None
         self.traj_dict = None
+        self.current_epoch = self.app.ongoing_trajs
 
     def __repr__(self):
-        return 'Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={}, timestep={}, model={}, app={})'.format(
-            self.nmin, self.nmax, self.nepochs, self.stride, self.sleeptime, self.timestep, self.model, repr(self.app))
+        return '''Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={},
+                         timestep={}, model={}, app={})'''.format(
+            self.nmin, self.nmax, self.nepochs, self.stride, self.sleeptime,
+            self.timestep, self.model, repr(self.app))
 
     def run(self):
         """
@@ -111,6 +152,13 @@ class Adaptive(object):
         while not finished:
             if self.current_epoch == self.nepochs:
                 finished = True
+            else:
+                self.app.initialize_folders()
+                self.fit_model()
+                spawns = self.find_respawn_conformations()
+                self.current_epoch = self.app.prepare_spawns(spawns, self.current_epoch)
+                logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
+                sleep(self.sleeptime)
 
     def find_respawn_conformations(self, percentile=0.5):
         """
@@ -172,13 +220,26 @@ class Adaptive(object):
             state_centers=clusterer.cluster_centers_[low_cluster_ids]
         )
 
+    def trajs_from_irrows(self, irow):
+        """
+        Load each trajectory in the rows of an msmbuilder.metadata object
+        :param irow: iterable coming from pd.DataFrame.iterrow method
+        :return i, traj: The traj id (starting at 0) and the mdtraj.Trajectory object
+        """
+        i, row = irow
+        logger.info('Loading {}'.format(row['traj_fn']))
+        traj = mdtraj.load(row['traj_fn'], top=row['top_fn'], stride=self.stride)
+        return i, traj
+
     def get_traj_dict(self):
         """
         Load the trajectories in the disk as specified by the metadata object in parallel
         :return traj_dict: A dictionary of mdtraj.Trajectory objects
         """
         with Pool() as pool:
-            traj_dict = dict(pool.imap_unordered(self.load_trajectories, self.app.meta.iterrows()))
+            traj_dict = dict(
+                pool.imap_unordered(self.trajs_from_irrows, self.app.meta.iterrows())
+            )
         return traj_dict
 
     def fit_model(self):
@@ -225,17 +286,6 @@ class Adaptive(object):
             raise ValueError('The first step in the model does not belong to the msmbuilder.featurizer module')
         return ttrajs
 
-    def load_trajectories(self, irow):
-        """
-        Load each trajectory in the rows of an msmbuilder.metadata object
-        :param irow: iterable coming from pd.DataFrame.iterrow method
-        :return i, traj: The traj id (starting at 0) and the mdtraj.Trajectory object
-        """
-        i, row = irow
-        logger.info('Loading {}'.format(row['traj_fn']))
-        traj = mdtraj.load(row['traj_fn'], top=row['top_fn'], stride=self.stride)
-        return i, traj
-
     def build_model(self, user_defined_model=None):
         """
         Load or build a model (Pipeline from scikit-learn) to do all the transforming and fitting
@@ -274,58 +324,6 @@ class Adaptive(object):
         """
         save_generic(self.model, self.model_pkl_fname)
 
-
-def get_ftrajs(traj_dict, featurizer):
-    """
-    Featurize a dictionary of mdtraj.Trajectory objects
-    :param traj_dict: The dictionary of trajectories
-    :param featurizer: A featurizer object which must have been fit first
-    :return ftrajs: A dict of featurized trajectories
-    """
-    ftrajs = {}
-    for k, v in traj_dict.items():
-        ftrajs[k] = featurizer.partial_transform(v)
-    return ftrajs
-
-
-def get_sctrajs(ftrajs, scaler):
-    """
-    Scale a dictionary of featurized trajectories
-    :param traj_dict: The dictionary of featurized trajectories, represented as np.arrays of shape (n_frames, n_features)
-    :param scaler: A scaler object which must have been fit first
-    :return ftrajs: A dict of scaled trajectories, represented as np.arrays of shape (n_frames, n_features)
-    """
-    sctrajs = {}
-    for k, v in ftrajs.items():
-        sctrajs[k] = scaler.partial_transform(v)
-    return sctrajs
-
-
-def get_ttrajs(sctrajs, tica):
-    """
-    Reduce the dimensionality of a dictionary of scaled or featurized trajectories
-    :param traj_dict: The dictionary of featurized/scaled trajectories, represented as np.arrays of shape (n_frames, n_features)
-    :param tica: A tICA object which must have been fit first
-    :return ttrajs: A dict of tica-transformed trajectories, represented as np.arrays of shape (n_frames, n_components)
-    """
-    ttrajs = {}
-    for k, v in sctrajs.items():
-        ttrajs[k] = tica.partial_transform(v)
-    return ttrajs
-
-
-def create_folder(folder_name):
-    if not os.path.exists(folder_name):
-        os.mkdir(folder_name)
-
-
-def generate_traj_from_stateinds(inds, meta):
-    traj = mdtraj.join(
-        mdtraj.load_frame(meta.loc[traj_i]['traj_fn'],
-                          top=meta.loc[traj_i]['top_fn'],
-                          frame=frame_i) for traj_i, frame_i in inds
-    )
-    return traj
 
 if __name__ == "__main__":
     app = App(meta='meta.pandas.pickl')
