@@ -136,4 +136,4 @@ def create_symlinks(files, dst_folder):
     for fn in fns_list:
         fname_trimmed = fn.split('/')[-1]
         dst_fname = os.path.join(dst_folder, fname_trimmed)
-        os.symlink(fn, dst_fname)
+        os.symlink(os.path.realpath(fn), dst_fname)

@@ -32,7 +32,7 @@ class App(object):
 
     def __init__(self, generator_folder='generators', data_folder='data',
                  input_folder='input', filtered_folder='filtered',
-                 model_folder='model', ngpus=4, meta=None, project_name='adaptive_project'):
+                 model_folder='model', ngpus=4, meta=None):
         """
         :param generator_folder:
         :param data_folder:
@@ -48,6 +48,7 @@ class App(object):
         self.model_folder = model_folder
         self.ngpus = ngpus
         self.meta = self.build_metadata(meta)
+        self.project_name = project_name
 
     def __repr__(self):
         return '''App(generator_folder={}, data_folder={}, input_folder={},
@@ -130,20 +131,55 @@ class App(object):
         return top
 
 
-    def prepare_PBS_jobs(self, folders):
-        folder_fnames_list = glob(folders)
+    def prepare_PBS_jobs(self, folders_glob):
+
+        folder_fnames_list = glob(folders_glob)
         cwd = os.getcwd()
+
         for input_folder in folder_fnames_list:
-            system_name = input_folder.split('/')[-1]
+            system_name = input_folder.split('/')[-1].split('_')[0]  # just eXXsYY
             data_folder = os.path.realpath(os.path.join(self.data_folder, system_name))
+
             if not os.path.exists(data_folder):
                 os.mkdir(data_folder)
+            create_symlinks(files=os.path.join(input_folder, 'structure*'), dst_folder=os.path.realpath(data_folder))
+
             os.chdir(data_folder)
-            create_symlinks(files='structure.*', dst_folder=data_folder)
-            skeleton = simulate_in_P100s(generate_mdrun_skeleton, system_name=system_name, destination=os.path.realpath(data_folder))
+            skeleton = simulate_in_P100s(
+                func=generate_mdrun_skeleton,
+                system_name=system_name,
+                destination=os.path.realpath(data_folder),
+                job_directory=os.path.join('/work/je714', self.project_name, system_name)
+            )
             sim = Simulation(skeleton)
             sim.writeSimulationFiles()
+
+            # AMBER input files
+
+            job_length = sim.job_length
+            nsteps = int(job_length * 10e6 / 4)  # ns to steps, using 4 fs / step
+            script_dir = os.path.dirname(__file__)  # Absolute path the script is in
+            relative_path = 'templates/*in'
+            for input_file in glob(os.path.join(script_dir, relative_path, '*in')):
+                logger.info('Copying {}'.format(input_file))
+                logger.info(os.path.realpath(input_file))
+                logger.info(os.path.basename(input_file))
+                shutil.copyfile(os.path.realpath(input_file), os.path.basename(input_file))
+            with open('Production_cmds.in', 'w') as f:
+                cmds = Template(f.read())
+
+            cmds = cmds.substitute(
+                nsteps=nsteps,
+                ns=sim.job_length
+            )
+
+            with open('Production_cmds.in', 'w') as f:
+                f.write(cmds)
+
             os.chdir(cwd)
+
+
+
 
 
 class Adaptive(object):
@@ -189,24 +225,25 @@ class Adaptive(object):
             else:
                 self.app.initialize_folders()
                 self.fit_model()
-                self.spawns = self.find_respawn_conformations()
+                self.spawns = self.respawn_from_tICs()
                 self.current_epoch = self.app.prepare_spawns(self.spawns, self.current_epoch)
+                self.app.prepare_PBS_jobs(os.path.join(self.app.input_folder, 'e*'))
                 logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
-                sleep(self.sleeptime)
+                finished = True
+                #sleep(self.sleeptime)
 
-    def find_respawn_conformations(self, percentile=0.5):
+    def respawn_from_lowMSM(self, percentile=0.5):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
-        We increase (or decrease) the percentile threshold of populated microstates until we have as many new candidates
-        as GPUs available.
+        We look for frames in the trajectories that are nearby regions with low population in the MSM equilibrium
 
         :param percentile: float, The percentile below which to look for low populated microstates of the MSM
         :return chosen_frames: a list of tuples, each tuple being (traj_id, frame_id)
         """
 
-        # First, identify the MarkovStateModel and Clusterer objects from the Pipeline model
-        # We try to look by name first, if the user has provided a model with
-        # different named steps than assumend, we look by position
+        # Identify the MarkovStateModel and Clusterer objects from the Pipeline model
+        # Try to look by name first, if the user has provided a model with
+        # different named steps than assumend, look by position
         if 'msm' in self.model.named_steps.keys():
             msm = self.model.named_steps['msm']
         else:
@@ -398,4 +435,4 @@ if __name__ == "__main__":
     app = App(meta='meta.pandas.pickl')
     ad = Adaptive(app=app, stride=20)
     ad.fit_model()
-    ad.find_respawn_conformations()
+    ad.respawn_from_lowMSM()
