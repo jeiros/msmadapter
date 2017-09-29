@@ -32,7 +32,7 @@ class App(object):
 
     def __init__(self, generator_folder='generators', data_folder='data',
                  input_folder='input', filtered_folder='filtered',
-                 model_folder='model', ngpus=4, meta=None):
+                 model_folder='model', ngpus=4, meta=None, project_name='adaptive_project'):
         """
         :param generator_folder:
         :param data_folder:
