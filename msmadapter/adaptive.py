@@ -219,43 +219,73 @@ class Adaptive(object):
         if not getattr(clusterer, '__module__') == msmbuilder.cluster.__name__:
             raise ValueError('The penultimate step in the model does not belong to the msmbuilder.cluster module')
 
-        # We now initiate the search for candidate frames amongst our trajectories
+        # Initiate the search for candidate frames amongst the trajectories
         logger.info('Looking for low populated microstates')
         logger.info('Initial percentile threshold set to {:02f}'.format(percentile))
+
         low_cluster_ids = []
         iterations = 0  # to avoid getting stuck in the search
-        while (not len(low_cluster_ids) == self.app.ngpus) or (iterations > 1000):
+        while not len(low_cluster_ids) == self.app.ngpus:
             low_populated_msm_states = numpy.where(
                 msm.populations_ < numpy.percentile(msm.populations_, percentile)
             )[0]  # numpy.where gives back a tuple with empty second element
-            low_cluster_ids = []
 
+            low_cluster_ids = []
             for state_id in low_populated_msm_states:
+                # Remember that the MSM object is built with ergodic trimming, so the subspace that is found
+                # does not necessarily recover all the clusters in the clusterer object.
+                # Therefore, the msm.mapping_ directory stores the correspondence between the cluster labels
+                # in the clusterer object and the MSM object. Keys are clusterer indices, values are MSM indices
                 for c_id, msm_id in msm.mapping_.items():
                     if msm_id == state_id:
-                        low_cluster_ids.append(c_id)
-                iterations += 1
+                        low_cluster_ids.append(c_id)  # Store the cluster ID in clusterer naming
 
+
+            # Change percentile threshold to reach desired number of frames
             if len(low_cluster_ids) < self.app.ngpus:
                 percentile += 0.5
-
             if len(low_cluster_ids) > self.app.ngpus:
                 if (len(low_cluster_ids) - 1) == self.app.ngpus:
                     low_cluster_ids.pop()
                 percentile -= 0.5
             logger.info('Percentiles is at {} and found {} frames'.format(percentile, len(low_cluster_ids)))
 
-        logger.info('Finished after {} iterations'.format(iterations))
+            iterations += 1
+            # Logic to stop search
+            if (percentile > 100) or (iterations > 500):
+                break
 
+        logger.info('Finished after {} iterations'.format(iterations))
         logger.info('Found {:d} frames which were below {:02f} percentile'.format(len(low_cluster_ids), percentile))
 
         if self.ttrajs is None:
             self.ttrajs = self.get_tica_trajs()
 
+        # Finally, find frames in the trajectories that are nearby the selected cluster centers (low populated in the MSM)
+        # Only retrieve one frame per cluster center
         return sample_states(
             trajs=self.ttrajs,
             state_centers=clusterer.cluster_centers_[low_cluster_ids]
         )
+
+    def respawn_from_tICs(self, dims=(0, 1)):
+
+        if self.ttrajs is None:
+            self.ttrajs = self.get_tica_trajs()
+
+        frames_per_tIC = int(self.app.ngpus / len(dims))
+
+        assert frames_per_tIC * len(dims) == self.app.ngpus
+
+        return [
+            sample_dimension(
+                self.ttrajs,
+                dimension=d,
+                n_frames=frames_per_tIC,
+                scheme='edge'
+            ) for d in dims
+        ]
+
 
     def trajs_from_irrows(self, irow):
         """
