@@ -1,27 +1,29 @@
+import logging
 import os
-import numpy
-from msmbuilder.io import load_generic, save_generic, gather_metadata, \
-    NumberedRunsParser, load_meta
-from msmbuilder.io.sampling import sample_states
-from sklearn.pipeline import Pipeline
+from glob import glob
+from multiprocessing import Pool
+from string import Template
+
+import mdtraj
 import msmbuilder
+import numpy
+import pandas as pd
+from mdrun.Simulation import Simulation
+from msmbuilder.cluster import MiniBatchKMeans
 from msmbuilder.decomposition import tICA, PCA
 from msmbuilder.featurizer import DihedralFeaturizer
-from msmbuilder.cluster import MiniBatchKMeans
+from msmbuilder.io import load_generic, save_generic, gather_metadata, \
+    NumberedRunsParser, load_meta
+from msmbuilder.io.sampling import sample_states, sample_dimension
 from msmbuilder.msm import MarkovStateModel
 from msmbuilder.preprocessing import RobustScaler
-import logging
-import mdtraj
-import pandas as pd
-from multiprocessing import Pool
-from glob import glob
-from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
-    write_cpptraj_script, write_tleap_script, create_symlinks
-from time import sleep
 from parmed.amber import AmberParm
 from parmed.tools import HMassRepartition
+from sklearn.pipeline import Pipeline
+
 from .pbs_settings import generate_mdrun_skeleton, simulate_in_P100s
-from mdrun.Simulation import Simulation
+from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
+    write_cpptraj_script, write_tleap_script, create_symlinks
 
 logger = logging.getLogger()
 
