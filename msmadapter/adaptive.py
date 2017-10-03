@@ -94,6 +94,11 @@ class App(object):
         return len(glob('/'.join([self.input_folder, '*nc'])))
 
     def prepare_spawns(self, spawns, epoch):
+        """
+        Prepare the prmtop and inpcrd files of the selected spawns
+        :param spawns: list of tuples, (traj_id, frame_id)
+        :param epoch: int, Epoch the selected spawns belong to
+        """
         sim_count = 0
         for traj_id, frame_id in spawns:
             logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
@@ -117,13 +122,30 @@ class App(object):
                 system_name=os.path.join(destination, 'structure'),
                 path=os.path.join(destination, 'script.tleap')
             )
+
+            # write info to file
+            information = [
+                'Parent trajectory:\t{}'.format(self.meta.loc[traj_id]['traj_fn']),
+                'Frame number:\t{}'.format(frame_id),
+                'Topology:\t{}'.format(self.meta.loc[traj_id]['top_fn']),
+                '' # To leave an empty line at end of file
+            ]
+            provenance_fn = os.path.join(destination, 'provenance.txt')
+            logger.debug('provenance_fn is {}'.format(provenance_fn))
+            with open(provenance_fn, 'w+') as f:
+                f.write('\n'.join(information))
             sim_count += 1
             # Apply hmr to new topologies
-            self.hmr_prmtop(os.path.join(destination, 'structure.prmtop'))
-        epoch += 1
-        return epoch
+            self.hmr_prmtop(top_fn=os.path.join(destination, 'structure.prmtop'))
+
 
     def hmr_prmtop(self, top_fn, save=True):
+        """
+        Use parmed to apply HMR to a topology file
+        :param top_fn: str, path to the prmtop file
+        :param save:  bool, whether to save the hmr prmtop
+        :return top: the hrm'ed prmtop file
+        """
         top = AmberParm(top_fn)
         hmr = HMassRepartition(top)
         hmr.execute()
@@ -134,7 +156,7 @@ class App(object):
         return top
 
 
-    def prepare_PBS_jobs(self, folders_glob):
+    def prepare_PBS_jobs(self, folders_glob, skeleton_function):
 
         folder_fnames_list = glob(folders_glob)
         cwd = os.getcwd()
@@ -148,11 +170,16 @@ class App(object):
             create_symlinks(files=os.path.join(input_folder, 'structure*'), dst_folder=os.path.realpath(data_folder))
 
             os.chdir(data_folder)
-            skeleton = simulate_in_P100s(
-                func=generate_mdrun_skeleton,
+            # skeleton = skeleton_function(
+            #     func=generate_mdrun_skeleton,
+            #     system_name=system_name,
+            #     destination=os.path.realpath(data_folder),
+            #     job_directory=os.path.join('/work/je714', self.project_name, system_name)
+            # )
+            skeleton = skeleton_function(
                 system_name=system_name,
-                destination=os.path.realpath(data_folder),
-                job_directory=os.path.join('/work/je714', self.project_name, system_name)
+                job_directory=os.path.join('/work/{}'.format(self.user_HPC), self.project_name, system_name),
+                destination=os.path.realpath(data_folder)
             )
             sim = Simulation(skeleton)
             sim.writeSimulationFiles()
@@ -162,21 +189,22 @@ class App(object):
             job_length = sim.job_length
             nsteps = int(job_length * 10e6 / 4)  # ns to steps, using 4 fs / step
             script_dir = os.path.dirname(__file__)  # Absolute path the script is in
-            relative_path = 'templates/*in'
-            for input_file in glob(os.path.join(script_dir, relative_path, '*in')):
+            templates_path = 'templates'
+            for input_file in glob(os.path.join(script_dir, templates_path, '*in')):
                 logger.info('Copying {}'.format(input_file))
                 logger.info(os.path.realpath(input_file))
                 logger.info(os.path.basename(input_file))
                 shutil.copyfile(os.path.realpath(input_file), os.path.basename(input_file))
-            with open('Production_cmds.in', 'w') as f:
-                cmds = Template(f.read())
 
+
+            with open('Production_cmds.in', 'r') as f:
+                cmds = Template(f.read())
             cmds = cmds.substitute(
                 nsteps=nsteps,
                 ns=sim.job_length
             )
 
-            with open('Production_cmds.in', 'w') as f:
+            with open('Production_cmds.in', 'w+') as f:
                 f.write(cmds)
 
             os.chdir(cwd)
@@ -224,16 +252,41 @@ class Adaptive(object):
         finished = False
         while not finished:
             if self.current_epoch == self.nepochs:
+                logger.info('Reached {} epochs. Finishing.'.format(self.current_epoch))
                 finished = True
             else:
                 self.app.initialize_folders()
                 self.fit_model()
-                self.spawns = self.respawn_from_tICs()
-                self.current_epoch = self.app.prepare_spawns(self.spawns, self.current_epoch)
-                self.app.prepare_PBS_jobs(os.path.join(self.app.input_folder, 'e*'))
+                #self.spawns = self.respawn_from_tICs()
+                self.spawns = self.respawn_from_lowMSM()
+                self.app.prepare_spawns(self.spawns, self.current_epoch)
+                logger.debug('Glob is {}'.format(os.path.join(self.app.input_folder, 'e{:02d}*'.format(self.current_epoch))))
+                # self.app.prepare_PBS_jobs(
+                #     folders_glob=os.path.join(self.app.input_folder, 'e{:02d}*'.format(self.current_epoch)),
+                #     skeleton_function=simulate_in_P100s
+                # )
+                self.app.prepare_PBS_jobs(
+                    folders_glob=os.path.join(self.app.input_folder, 'e{:02d}*'.format(self.current_epoch)),
+                    skeleton_function=partial(
+                        simulate_in_pqigould,
+                        func=generate_mdrun_skeleton,
+                        host='cx1-15-6-1',
+                        destination=None,
+                        job_directory=None,
+                        system_name=None
+                        )
+                )
                 logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
+                # sleep(self.sleeptime)
+                self.current_epoch += 1
                 finished = True
-                #sleep(self.sleeptime)
+
+            # skeleton = skeleton_function(
+            #     func=generate_mdrun_skeleton,
+            #     system_name=system_name,
+            #     destination=os.path.realpath(data_folder),
+            #     job_directory=os.path.join('/work/je714', self.project_name, system_name)
+            # )
 
     def respawn_from_lowMSM(self, percentile=0.5):
         """
@@ -319,14 +372,20 @@ class Adaptive(object):
 
         assert frames_per_tIC * len(dims) == self.app.ngpus
 
-        return [
-            sample_dimension(
-                self.ttrajs,
-                dimension=d,
-                n_frames=frames_per_tIC,
-                scheme='edge'
-            ) for d in dims
-        ]
+        pair_list = []
+
+        for d in dims:
+            chosen_pairs = sample_dimension(
+                    self.ttrajs,
+                    dimension=d,
+                    n_frames=frames_per_tIC,
+                    scheme='edge'
+            )
+            for pair in chosen_pairs:
+                pair_list.append(pair)
+
+
+        return pair_list
 
 
     def trajs_from_irrows(self, irow):
