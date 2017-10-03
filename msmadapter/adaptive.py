@@ -20,10 +20,12 @@ from msmbuilder.preprocessing import RobustScaler
 from parmed.amber import AmberParm
 from parmed.tools import HMassRepartition
 from sklearn.pipeline import Pipeline
-
-from .pbs_settings import generate_mdrun_skeleton, simulate_in_P100s
+import shutil
+from .pbs_settings import generate_mdrun_skeleton, simulate_in_P100s, \
+    simulate_in_pqigould
 from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
     write_cpptraj_script, write_tleap_script, create_symlinks
+from functools import partial
 
 logger = logging.getLogger()
 
