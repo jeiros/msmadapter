@@ -100,6 +100,26 @@ def simulate_in_P100s(func, job_directory, system_name, destination):
     )
     return func(pbs_settings_kwargs=pbs, simulation_details_kwargs=sim, local_machine_kwargs=local)
 
+
+def simulate_in_pqigould(func, host, job_directory, system_name, destination):
+    pbs = pbs_settings(
+        walltime='192:0:0', nnodes=1, ncpus=1, ngpus=1, mem='2gb',
+        host=host, queue='pqigould', gpu_type=''
+    )
+    sim = simulation_details(
+        system_name=system_name, inpcrd_file="structure.inpcrd",
+        topology_file="structure_hmr.prmtop", start_rst="Heated_eq.rst",
+        input_file="Production_cmds.in", start_time=0,
+        final_time=500, job_length=50, job_directory=job_directory,
+        cuda_version="8.0.44", binary_location="/home/igould/cuda8amber/amber/bin/pmemd.cuda_SPFP",
+        pre_simulation_cmd=None, pre_simulation_type="gpu"
+    )
+    local = local_machine_details(
+        destination=destination
+    )
+    return func(pbs_settings_kwargs=pbs, simulation_details_kwargs=sim, local_machine_kwargs=local)
+
+
 def remove_pbs_files():
     pbs_fnames = glob('*.pbs')
     for fname in pbs_fnames:
