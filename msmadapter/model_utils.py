@@ -71,6 +71,17 @@ def retrieve_decomposer(model):
 
 def apply_percentile_search(count_array, percentile, desired_length, search_type='clusterer',
                             msm=None, max_iter=500):
+    """
+    Search for
+    :param count_array: np.array of counts in microstates. Shape (n_microstates,)
+    :param percentile: float, initial percentile to look below from
+    :param desired_length: int, length of final list of pairs
+    :param search_type: str, has to be 'clusterer' or 'msm'
+    :param msm: MarkovStateModel, needed if search_type='msm'
+    :param max_iter: int, maximum number of iterations for the search
+    :return low_count_ids: list, list of indices of microstates that have low counts below the percentile
+        that matches the length of desired_length
+    """
 
     if search_type not in ['clusterer', 'msm']:
         raise ValueError('search_type is not clusterer or msm.')
