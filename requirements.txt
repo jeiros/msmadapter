@@ -2,4 +2,4 @@ numpy
 pandas
 mdtraj
 msmbuilder
-
+msmexplorer

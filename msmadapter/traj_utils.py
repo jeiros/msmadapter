@@ -5,6 +5,7 @@ from string import Template
 import shutil
 from glob import glob
 
+
 def get_ftrajs(traj_dict, featurizer):
     """
     Featurize a dictionary of mdtraj.Trajectory objects
@@ -130,6 +131,7 @@ def write_tleap_script(pdb_file='seed.pdb', lig_dir='lig_dir',
         if run:
             call(['tleap', '-f', path], stdout=PIPE)
     return cmds
+
 
 def create_symlinks(files, dst_folder):
     fns_list = glob(files)

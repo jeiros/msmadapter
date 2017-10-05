@@ -5,7 +5,6 @@ from multiprocessing import Pool
 from string import Template
 
 import mdtraj
-import msmbuilder
 import numpy
 import pandas as pd
 from mdrun.Simulation import Simulation
@@ -25,6 +24,7 @@ from .pbs_settings import generate_mdrun_skeleton, simulate_in_P100s, \
     simulate_in_pqigould
 from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
     write_cpptraj_script, write_tleap_script, create_symlinks
+from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, retrieve_scaler, retrieve_decomposer, apply_percentile_search
 from functools import partial
 
 logger = logging.getLogger()
@@ -34,20 +34,26 @@ class App(object):
 
     def __init__(self, generator_folder='generators', data_folder='data',
                  input_folder='input', filtered_folder='filtered',
-                 model_folder='model', ngpus=4, meta=None, project_name='adaptive', user_HPC='je714'):
+                 model_folder='model', build_folder='build', ngpus=4, meta=None,
+                 project_name='adaptive', user_HPC='je714'):
         """
         :param generator_folder:
         :param data_folder:
         :param input_folder:
         :param filtered_folder:
         :param model_folder:
+        :param build_folder:
         :param ngpus:
+        :param meta:
+        :param project_name:
+        :param user_HPC:
         """
         self.generator_folder = generator_folder
         self.data_folder = data_folder
         self.input_folder = input_folder
         self.filtered_folder = filtered_folder
         self.model_folder = model_folder
+        self.build_folder = build_folder
         self.ngpus = ngpus
         self.meta = self.build_metadata(meta)
         self.project_name = project_name
@@ -70,6 +76,7 @@ class App(object):
         create_folder(self.input_folder)
         create_folder(self.filtered_folder)
         create_folder(self.model_folder)
+        create_folder(self.build_folder)
 
     def build_metadata(self, meta):
         """Builds an msmbuilder metadata object"""
@@ -100,11 +107,23 @@ class App(object):
         :param epoch: int, Epoch the selected spawns belong to
         """
         sim_count = 0
+        cwd = os.getcwd()
         for traj_id, frame_id in spawns:
             logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
             folder_name = 'e{:02d}s{:02d}_t{:03d}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
             destination = os.path.join(self.input_folder, folder_name)
             create_folder(destination)
+            # Add files from build folder to destination folder so tleap can read them
+            if not os.path.exists(self.build_folder):
+                raise ValueError('{} folder does not exist. Create it first.'.format(self.build_folder))
+            else:
+                for fname in glob(os.path.join(self.build_folder, '*')):
+                    os.symlink(
+                        os.path.realpath(fname),
+                        os.path.join(destination, os.path.basename(fname))
+                    )
+
+
             write_cpptraj_script(
                 traj=self.meta.loc[traj_id]['traj_fn'],
                 top=self.meta.loc[traj_id]['top_fn'],
@@ -114,30 +133,31 @@ class App(object):
                 path=os.path.join(destination, 'script.cpptraj'),
                 run=True
             )
-            os.symlink('../../CA2.prep', os.path.join(destination, 'CA2.prep'))
+
+            os.chdir(destination)
             write_tleap_script(
-                pdb_file=os.path.join(destination, 'seed.pdb'),
+                pdb_file='seed.pdb',
                 lig_dir=None,
                 run=True,
-                system_name=os.path.join(destination, 'structure'),
-                path=os.path.join(destination, 'script.tleap')
+                system_name='structure',
+                path='script.tleap'
             )
+            os.chdir(cwd)
+            # Apply hmr to new topologies
+            self.hmr_prmtop(top_fn=os.path.join(destination, 'structure.prmtop'))
 
-            # write info to file
+            # Write information from provenance to file
             information = [
                 'Parent trajectory:\t{}'.format(self.meta.loc[traj_id]['traj_fn']),
                 'Frame number:\t{}'.format(frame_id),
                 'Topology:\t{}'.format(self.meta.loc[traj_id]['top_fn']),
-                '' # To leave an empty line at end of file
+                ''  # Leave an empty line at end of file
             ]
             provenance_fn = os.path.join(destination, 'provenance.txt')
-            logger.debug('provenance_fn is {}'.format(provenance_fn))
             with open(provenance_fn, 'w+') as f:
                 f.write('\n'.join(information))
-            sim_count += 1
-            # Apply hmr to new topologies
-            self.hmr_prmtop(top_fn=os.path.join(destination, 'structure.prmtop'))
 
+            sim_count += 1
 
     def hmr_prmtop(self, top_fn, save=True):
         """
@@ -155,7 +175,6 @@ class App(object):
             top.save(top_out_fn)
         return top
 
-
     def prepare_PBS_jobs(self, folders_glob, skeleton_function):
 
         folder_fnames_list = glob(folders_glob)
@@ -167,7 +186,8 @@ class App(object):
 
             if not os.path.exists(data_folder):
                 os.mkdir(data_folder)
-            create_symlinks(files=os.path.join(input_folder, 'structure*'), dst_folder=os.path.realpath(data_folder))
+            create_symlinks(files=os.path.join(input_folder, 'structure*'),
+                            dst_folder=os.path.realpath(data_folder))
 
             os.chdir(data_folder)
             # skeleton = skeleton_function(
@@ -178,7 +198,8 @@ class App(object):
             # )
             skeleton = skeleton_function(
                 system_name=system_name,
-                job_directory=os.path.join('/work/{}'.format(self.user_HPC), self.project_name, system_name),
+                job_directory=os.path.join('/work/{}'.format(self.user_HPC),
+                                           self.project_name, system_name),
                 destination=os.path.realpath(data_folder)
             )
             sim = Simulation(skeleton)
@@ -187,15 +208,17 @@ class App(object):
             # AMBER input files
 
             job_length = sim.job_length
-            nsteps = int(job_length * 10e6 / 4)  # ns to steps, using 4 fs / step
+            nsteps = int(job_length * 1e6 / 4)  # ns to steps, using 4 fs / step
             script_dir = os.path.dirname(__file__)  # Absolute path the script is in
             templates_path = 'templates'
             for input_file in glob(os.path.join(script_dir, templates_path, '*in')):
                 logger.info('Copying {}'.format(input_file))
                 logger.info(os.path.realpath(input_file))
                 logger.info(os.path.basename(input_file))
-                shutil.copyfile(os.path.realpath(input_file), os.path.basename(input_file))
-
+                shutil.copyfile(
+                    os.path.realpath(input_file),
+                    os.path.basename(input_file)
+                )
 
             with open('Production_cmds.in', 'r') as f:
                 cmds = Template(f.read())
@@ -208,9 +231,6 @@ class App(object):
                 f.write(cmds)
 
             os.chdir(cwd)
-
-
-
 
 
 class Adaptive(object):
@@ -258,13 +278,9 @@ class Adaptive(object):
                 self.app.initialize_folders()
                 self.fit_model()
                 #self.spawns = self.respawn_from_tICs()
-                self.spawns = self.respawn_from_lowMSM()
+                self.spawns = self.respawn_from_MSM()
                 self.app.prepare_spawns(self.spawns, self.current_epoch)
-                logger.debug('Glob is {}'.format(os.path.join(self.app.input_folder, 'e{:02d}*'.format(self.current_epoch))))
-                # self.app.prepare_PBS_jobs(
-                #     folders_glob=os.path.join(self.app.input_folder, 'e{:02d}*'.format(self.current_epoch)),
-                #     skeleton_function=simulate_in_P100s
-                # )
+
                 self.app.prepare_PBS_jobs(
                     folders_glob=os.path.join(self.app.input_folder, 'e{:02d}*'.format(self.current_epoch)),
                     skeleton_function=partial(
@@ -274,21 +290,14 @@ class Adaptive(object):
                         destination=None,
                         job_directory=None,
                         system_name=None
-                        )
+                    )
                 )
                 logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
                 # sleep(self.sleeptime)
                 self.current_epoch += 1
                 finished = True
 
-            # skeleton = skeleton_function(
-            #     func=generate_mdrun_skeleton,
-            #     system_name=system_name,
-            #     destination=os.path.realpath(data_folder),
-            #     job_directory=os.path.join('/work/je714', self.project_name, system_name)
-            # )
-
-    def respawn_from_lowMSM(self, percentile=0.5):
+    def respawn_from_MSM(self, percentile=0.5):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
         We look for frames in the trajectories that are nearby regions with low population in the MSM equilibrium
@@ -297,61 +306,16 @@ class Adaptive(object):
         :return chosen_frames: a list of tuples, each tuple being (traj_id, frame_id)
         """
 
-        # Identify the MarkovStateModel and Clusterer objects from the Pipeline model
-        # Try to look by name first, if the user has provided a model with
-        # different named steps than assumend, look by position
-        if 'msm' in self.model.named_steps.keys():
-            msm = self.model.named_steps['msm']
-        else:
-            msm = self.model.steps[-1]
-            if not getattr(msm, '__module__') == msmbuilder.msm.__name__:
-                raise ValueError('The last step in the model does not belong to the msmbuilder.msm module')
+        msm = retrieve_MSM(self.model)
+        clusterer = retrieve_clusterer(self.model)
 
-        if 'clusterer' in self.model.named_steps.keys():
-            clusterer = self.model.named_steps['clusterer']
-        else:
-            clusterer = self.model.steps[-2]
-        if not getattr(clusterer, '__module__') == msmbuilder.cluster.__name__:
-            raise ValueError('The penultimate step in the model does not belong to the msmbuilder.cluster module')
-
-        # Initiate the search for candidate frames amongst the trajectories
-        logger.info('Looking for low populated microstates')
-        logger.info('Initial percentile threshold set to {:02f}'.format(percentile))
-
-        low_cluster_ids = []
-        iterations = 0  # to avoid getting stuck in the search
-        while not len(low_cluster_ids) == self.app.ngpus:
-            low_populated_msm_states = numpy.where(
-                msm.populations_ < numpy.percentile(msm.populations_, percentile)
-            )[0]  # numpy.where gives back a tuple with empty second element
-
-            low_cluster_ids = []
-            for state_id in low_populated_msm_states:
-                # Remember that the MSM object is built with ergodic trimming, so the subspace that is found
-                # does not necessarily recover all the clusters in the clusterer object.
-                # Therefore, the msm.mapping_ directory stores the correspondence between the cluster labels
-                # in the clusterer object and the MSM object. Keys are clusterer indices, values are MSM indices
-                for c_id, msm_id in msm.mapping_.items():
-                    if msm_id == state_id:
-                        low_cluster_ids.append(c_id)  # Store the cluster ID in clusterer naming
-
-
-            # Change percentile threshold to reach desired number of frames
-            if len(low_cluster_ids) < self.app.ngpus:
-                percentile += 0.5
-            if len(low_cluster_ids) > self.app.ngpus:
-                if (len(low_cluster_ids) - 1) == self.app.ngpus:
-                    low_cluster_ids.pop()
-                percentile -= 0.5
-            logger.info('Percentiles is at {} and found {} frames'.format(percentile, len(low_cluster_ids)))
-
-            iterations += 1
-            # Logic to stop search
-            if (percentile > 100) or (iterations > 500):
-                break
-
-        logger.info('Finished after {} iterations'.format(iterations))
-        logger.info('Found {:d} frames which were below {:02f} percentile'.format(len(low_cluster_ids), percentile))
+        low_counts_ids = apply_percentile_search(
+            count_array=msm.populations_,
+            percentile=percentile,
+            desired_length=self.app.ngpus,
+            search_type='msm',
+            msm=msm
+        )
 
         if self.ttrajs is None:
             self.ttrajs = self.get_tica_trajs()
@@ -360,33 +324,55 @@ class Adaptive(object):
         # Only retrieve one frame per cluster center
         return sample_states(
             trajs=self.ttrajs,
-            state_centers=clusterer.cluster_centers_[low_cluster_ids]
+            state_centers=clusterer.cluster_centers_[low_counts_ids]
         )
 
     def respawn_from_tICs(self, dims=(0, 1)):
+        """
+        Find candidate frames in the trajectories to spawn new simulations from.
+
+        We look for frames in the trajectories that are nearby the edge regions of the tIC converted space
+        :param dims: tICs to sample from
+        :return chosen_frames: a list of tuples, each tuple being (traj_id, frame_id)
+        """
 
         if self.ttrajs is None:
             self.ttrajs = self.get_tica_trajs()
 
         frames_per_tIC = int(self.app.ngpus / len(dims))
-
         assert frames_per_tIC * len(dims) == self.app.ngpus
 
-        pair_list = []
-
+        chosen_frames = []
         for d in dims:
-            chosen_pairs = sample_dimension(
-                    self.ttrajs,
-                    dimension=d,
-                    n_frames=frames_per_tIC,
-                    scheme='edge'
+            sampled_pairs = sample_dimension(
+                self.ttrajs,
+                dimension=d,
+                n_frames=frames_per_tIC,
+                scheme='edge'
             )
-            for pair in chosen_pairs:
-                pair_list.append(pair)
+            for pair in sampled_pairs:
+                chosen_frames.append(pair)
 
+        return chosen_frames
 
-        return pair_list
+    def respawn_from_clusterer(self, percentile=0.5):
 
+        clusterer = retrieve_clusterer(self.model)
+
+        low_counts_ids = apply_percentile_search(
+            count_array=clusterer.counts_,
+            percentile=percentile,
+            desired_length=self.app.ngpus,
+            search_type='clusterer'
+        )
+
+        if self.ttrajs is None:
+            self.ttrajs = self.get_tica_trajs()
+
+        return sample_states(
+            trajs=self.ttrajs,
+            state_centers=clusterer.cluster_centers_[low_counts_ids]
+        )
 
     def trajs_from_irrows(self, irow):
         """
@@ -430,28 +416,20 @@ class Adaptive(object):
         """
         # Assume order of steps in model
         # Then I try to check as best as I know that it's correct
-        featurizer = self.model.steps[0][1]
-        scaler = self.model.steps[1][1]
-        decomposer = self.model.steps[2][1]
+        featurizer = retrieve_feat(self.model)
+        scaler = retrieve_scaler(self.model)
+        decomposer = retrieve_decomposer(self.model)
 
-        if getattr(featurizer, '__module__') == msmbuilder.featurizer.featurizer.__name__:
-            logger.info('Featurizing trajs')
-            ftrajs = get_ftrajs(self.traj_dict, featurizer)
 
-            if getattr(scaler, '__module__') == msmbuilder.preprocessing.__name__:
-                logger.info('Scaling ftrajs')
-                sctrajs = get_sctrajs(ftrajs, scaler)
-            elif isinstance(scaler, tICA) or isinstance(scaler, PCA):
-                logger.warning('Second step in model is a decomposer and not a scaler')
-                decomposer = scaler
-                sctrajs = ftrajs  # We did not do any scaling of ftrajs
-            else:
-                logger.warning('Could not find a scaler or decomposer in your model.')
+        logger.info('Featurizing trajs')
+        ftrajs = get_ftrajs(self.traj_dict, featurizer)
 
-            logger.info('Getting output of tICA')
-            ttrajs = get_ttrajs(sctrajs, decomposer)
-        else:
-            raise ValueError('The first step in the model does not belong to the msmbuilder.featurizer module')
+        logger.info('Scaling ftrajs')
+        sctrajs = get_sctrajs(ftrajs, scaler)
+
+        logger.info('Getting output of tICA')
+        ttrajs = get_ttrajs(sctrajs, decomposer)
+
         return ttrajs
 
     def build_model(self, user_defined_model=None):
@@ -476,7 +454,7 @@ class Adaptive(object):
                     ('scaler', RobustScaler()),
                     ('tICA', tICA(lag_time=lag_time, kinetic_mapping=True, n_components=10)),
                     ('clusterer', MiniBatchKMeans(n_clusters=200)),
-                    ('msm', MarkovStateModel(lag_time=lag_time))
+                    ('msm', MarkovStateModel(lag_time=lag_time, ergodic_cutoff='off', reversible_type=None))
                 ])
         else:
             if not isinstance(user_defined_model, Pipeline):
@@ -497,4 +475,4 @@ if __name__ == "__main__":
     app = App(meta='meta.pandas.pickl')
     ad = Adaptive(app=app, stride=20)
     ad.fit_model()
-    ad.respawn_from_lowMSM()
+    ad.respawn_from_MSM()
