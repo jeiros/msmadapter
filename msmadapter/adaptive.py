@@ -303,7 +303,7 @@ class Adaptive(object):
         We look for frames in the trajectories that are nearby regions with low population in the MSM equilibrium
 
         :param percentile: float, The percentile below which to look for low populated microstates of the MSM
-        :return chosen_frames: a list of tuples, each tuple being (traj_id, frame_id)
+        :return: a list of tuples, each tuple being (traj_id, frame_id)
         """
 
         msm = retrieve_MSM(self.model)
@@ -330,8 +330,8 @@ class Adaptive(object):
     def respawn_from_tICs(self, dims=(0, 1)):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
+        Look for frames in the trajectories that are nearby the edge regions of the tIC converted space
 
-        We look for frames in the trajectories that are nearby the edge regions of the tIC converted space
         :param dims: tICs to sample from
         :return chosen_frames: a list of tuples, each tuple being (traj_id, frame_id)
         """
@@ -339,7 +339,7 @@ class Adaptive(object):
         if self.ttrajs is None:
             self.ttrajs = self.get_tica_trajs()
 
-        frames_per_tIC = int(self.app.ngpus / len(dims))
+        frames_per_tIC = max(1, int(self.app.ngpus / len(dims)))
         assert frames_per_tIC * len(dims) == self.app.ngpus
 
         chosen_frames = []
@@ -356,6 +356,13 @@ class Adaptive(object):
         return chosen_frames
 
     def respawn_from_clusterer(self, percentile=0.5):
+        """
+        Find candidate frames in the trajectories to spawn new simulations from.
+        Look for frames in the trajectories that are nearby the cluster centers that have low counts
+
+        :param percentile: float, The percentile below which to look for low populated microstates of the MSM
+        :return: a list of tuples, each tuple being (traj_id, frame_id)
+        """
 
         clusterer = retrieve_clusterer(self.model)
 
