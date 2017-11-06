@@ -128,11 +128,13 @@ def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 35', counterio
         os.path.join(script_dir, relative_path), './template.tleap')
     with open('./template.tleap', 'r') as f:
         cmds = Template(f.read())
+    ligand_name = os.path.splitext(os.path.basename(glob('*off')[0]))[0]
     cmds = cmds.substitute(
         pdb_file=pdb_file,
         box_dimensions=box_dimensions,
         counterions=counterions,
-        system_name=system_name
+        system_name=system_name,
+        ligand_name=ligand_name
     )
     if write:
         with open(path, 'w') as f:

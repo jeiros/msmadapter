@@ -8,11 +8,11 @@ loadoff /usr/local/amber15/dat/leap/lib/SEP.lib
 
 # Ligand parameters if needed
 source leaprc.gaff
-loadamberparams *.frcmod
-loadoff *.off
+loadamberparams ${ligand_name}.frcmod
+loadoff ${ligand_name}.off
 
 # Load ligand alone and save parameters
-lig_pdb = loadpdb *.pdb
+lig_pdb = loadpdb ${ligand_name}.pdb
 check lig_pdb
 saveamberparm lig_pdb lig.prmtop lig.inpcrd
 
