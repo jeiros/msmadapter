@@ -24,5 +24,8 @@ plot_spawns(spawns_cluster, ad.ttrajs)
 plot_spawns(spawns_tica, ad.ttrajs, color='green')
 plot_spawns(spawns_MSM, ad.ttrajs, color='purple')
 f = pp.gcf()
-f.savefig('spawns.pdf')
+f.savefig('spawns.png', dpi=300)
 ```
+
+
+![Image of Yaktocat](spawns.png)
