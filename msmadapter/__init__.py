@@ -3,8 +3,8 @@ import logging
 import logging.handlers
 
 f = logging.Formatter(fmt='%(asctime)s %(levelname)s:%(name)s: %(message)s '
-    '(%(filename)s:%(lineno)d)',
-    datefmt="%Y-%m-%d %H:%M:%S")
+                      '(%(filename)s:%(lineno)d)',
+                      datefmt="%Y-%m-%d %H:%M:%S")
 handler = logging.StreamHandler()
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
