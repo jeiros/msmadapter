@@ -108,8 +108,7 @@ def write_cpptraj_script(traj, top, frame1=1, frame2=1, outfile=None,
     return cmds
 
 
-def write_tleap_script(pdb_file='seed.pdb', lig_dir='lig_dir',
-                       box_dimensions='25 25 35', counterions='220',
+def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 35', counterions='220',
                        system_name='seed_wat', write=True, path='script.tleap',
                        run=False):
     script_dir = os.path.dirname(__file__)  # Absolute path the script is in
@@ -120,7 +119,6 @@ def write_tleap_script(pdb_file='seed.pdb', lig_dir='lig_dir',
         cmds = Template(f.read())
     cmds = cmds.substitute(
         pdb_file=pdb_file,
-        lig_dir=lig_dir,
         box_dimensions=box_dimensions,
         counterions=counterions,
         system_name=system_name

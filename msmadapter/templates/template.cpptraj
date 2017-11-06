@@ -1,4 +1,31 @@
-parm ${top}
-trajin ${traj} ${frame1} ${frame2}
-trajout ${outfile}
-run
+# General protein parameters
+source oldff/leaprc.ff14SB
+loadamberparams frcmod.ionsjc_tip3p
+loadamberparams frcmod.phosaa10
+loadamberprep ./CA2.prep
+loadoff /usr/local/amber15/dat/leap/lib/S1P.lib
+loadoff /usr/local/amber15/dat/leap/lib/SEP.lib
+
+# Ligand parameters if needed
+source leaprc.gaff
+loadamberparams *.frcmod
+loadoff *.off
+
+# Load ligand alone and save parameters
+lig_pdb = loadpdb *.pdb
+check lig_pdb
+saveamberparm lig_pdb lig.prmtop lig.inpcrd
+
+
+
+# Load the pdb and prepare it
+pdb =  loadpdb ${pdb_file}
+check pdb
+charge pdb
+addions pdb Na+ 0
+solvatebox pdb TIP3PBOX{${box_dimensions}}
+addionsrand pdb Na+ ${counterions} Cl- ${counterions}
+saveamberparm pdb ${system_name}.prmtop ${system_name}.inpcrd
+savepdb pdb ${system_name}.pdb
+
+quit
