@@ -341,7 +341,6 @@ class Adaptive(object):
             self.ttrajs = self.get_tica_trajs()
 
         frames_per_tIC = max(1, int(self.app.ngpus / len(dims)))
-        assert frames_per_tIC * len(dims) == self.app.ngpus
 
         chosen_frames = []
         for d in dims:
