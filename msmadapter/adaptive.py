@@ -207,12 +207,6 @@ class App(object):
                             dst_folder=os.path.realpath(data_folder))
 
             os.chdir(data_folder)
-            # skeleton = skeleton_function(
-            #     func=generate_mdrun_skeleton,
-            #     system_name=system_name,
-            #     destination=os.path.realpath(data_folder),
-            #     job_directory=os.path.join('/work/je714', self.project_name, system_name)
-            # )
             skeleton = skeleton_function(
                 system_name=system_name,
                 job_directory=os.path.join('/work/{}'.format(self.user_HPC),
@@ -445,7 +439,6 @@ class Adaptive(object):
         featurizer = retrieve_feat(self.model)
         scaler = retrieve_scaler(self.model)
         decomposer = retrieve_decomposer(self.model)
-
 
         logger.info('Featurizing trajs')
         ftrajs = get_ftrajs(self.traj_dict, featurizer)
