@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 package_name = 'msmadapter'
-version = '0.1'
+version = '0.1.dev0'
 setup(
     name=package_name,
     version=version,
