@@ -105,6 +105,8 @@ def write_cpptraj_script(traj, top, frame1=1, frame2=1, outfile=None,
         if run:
             call(['cpptraj', '-i', path], stdout=PIPE)
 
+    os.remove('./template.cpptraj')
+
     return cmds
 
 
