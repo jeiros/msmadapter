@@ -1,15 +1,16 @@
 import logging
 import os
+import shutil
+from functools import partial
 from glob import glob
 from multiprocessing import Pool
 from string import Template
 
 import mdtraj
-import numpy
 import pandas as pd
 from mdrun.Simulation import Simulation
 from msmbuilder.cluster import MiniBatchKMeans
-from msmbuilder.decomposition import tICA, PCA
+from msmbuilder.decomposition import tICA
 from msmbuilder.featurizer import DihedralFeaturizer
 from msmbuilder.io import load_generic, save_generic, gather_metadata, \
     NumberedRunsParser, load_meta
@@ -19,13 +20,12 @@ from msmbuilder.preprocessing import RobustScaler
 from parmed.amber import AmberParm
 from parmed.tools import HMassRepartition
 from sklearn.pipeline import Pipeline
-import shutil
-from .pbs_settings import generate_mdrun_skeleton, simulate_in_P100s, \
-    simulate_in_pqigould
+
+from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
+    retrieve_scaler, retrieve_decomposer, apply_percentile_search
+from .pbs_utils import generate_mdrun_skeleton, simulate_in_pqigould
 from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
     write_cpptraj_script, write_tleap_script, create_symlinks
-from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, retrieve_scaler, retrieve_decomposer, apply_percentile_search
-from functools import partial
 
 logger = logging.getLogger()
 
