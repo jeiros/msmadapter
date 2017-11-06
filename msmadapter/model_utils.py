@@ -2,7 +2,7 @@ import msmbuilder
 import logging
 import numpy
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def retrieve_MSM(model):

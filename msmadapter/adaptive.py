@@ -27,8 +27,7 @@ from .pbs_utils import generate_mdrun_skeleton, simulate_in_pqigould
 from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
     write_cpptraj_script, write_tleap_script, create_symlinks
 
-logger = logging.getLogger()
-
+logger = logging.getLogger(__name__)
 
 class App(object):
 
