@@ -37,7 +37,7 @@ class App(object):
     def __init__(self, generator_folder='generators', data_folder='data',
                  input_folder='input', filtered_folder='filtered',
                  model_folder='model', build_folder='build', ngpus=4, meta=None,
-                 project_name='adaptive', user_HPC='je714'):
+                 project_name='adaptive', user_HPC='je714', from_solvated=False):
         """
         :param generator_folder:
         :param data_folder:
@@ -60,6 +60,7 @@ class App(object):
         self.meta = self.build_metadata(meta)
         self.project_name = project_name
         self.user_HPC = user_HPC
+        self.from_solvated = from_solvated
 
     def __repr__(self):
         return '''App(generator_folder={}, data_folder={}, input_folder={},
@@ -102,65 +103,78 @@ class App(object):
     def ongoing_trajs(self):
         return len(glob('/'.join([self.input_folder, '*nc'])))
 
+
     def prepare_spawns(self, spawns, epoch):
         """
-        Prepare the prmtop and restart/inpcrd files of the selected spawns
+        Prepare the prmtop and inpcrd files of the selected spawns
         :param spawns: list of tuples, (traj_id, frame_id)
         :param epoch: int, Epoch the selected spawns belong to
         """
         sim_count = 1
-        cwd = os.getcwd()
+        basedir = os.getcwd()
         for traj_id, frame_id in spawns:
             logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
 
             folder_name = 'e{}s{}_t{}f{}'.format(epoch, sim_count, traj_id, frame_id)
             destination = os.path.join(self.input_folder, folder_name)
             create_folder(destination)
-            # Add files from build folder to destination folder so tleap can read them
-            if not os.path.exists(self.build_folder):
-                raise ValueError('{} folder does not exist. Create it first.'.format(self.build_folder))
+
+            if self.from_solvated:
+                # Add files from build folder to destination folder so tleap can read them
+                # since we're not retrieving frame from an already solvated trajectory
+                if not os.path.exists(self.build_folder):
+                    raise ValueError('{} folder does not exist. Create it first.'.format(self.build_folder))
+                else:
+                    for fname in glob(os.path.join(self.build_folder, '*')):
+                        os.symlink(
+                            os.path.realpath(fname),
+                            os.path.join(destination, os.path.basename(fname))
+                        )
+            # All files in destination, so now move into it
+            os.chdir(destination)
+            if self.from_solvated:
+                outfile = 'seed.ncrst'
             else:
-                for fname in glob(os.path.join(self.build_folder, '*')):
-                    os.symlink(
-                        os.path.realpath(fname),
-                        os.path.join(destination, os.path.basename(fname))
-                    )
-
-
+                outfile = 'seed.pdb'
             write_cpptraj_script(
-                traj=self.meta.loc[traj_id]['traj_fn'],
-                top=self.meta.loc[traj_id]['top_fn'],
+                traj=os.path.relpath(os.path.join(basedir, self.meta.loc[traj_id]['traj_fn'])),
+                top=os.path.relpath(self.meta.loc[traj_id]['top_abs_fn']),
                 frame1=frame_id,
                 frame2=frame_id,
-                outfile=os.path.join(destination, 'seed.pdb'),
-                path=os.path.join(destination, 'script.cpptraj'),
+                outfile=outfile,
+                path='script.cpptraj',
                 run=True
             )
 
-            os.chdir(destination)
-            write_tleap_script(
-                pdb_file='seed.pdb',
-                lig_dir=None,
-                run=True,
-                system_name='structure',
-                path='script.tleap'
-            )
-            os.chdir(cwd)
-            # Apply hmr to new topologies
-            self.hmr_prmtop(top_fn=os.path.join(destination, 'structure.prmtop'))
-
+            if not self.from_solvated:
+                write_tleap_script(
+                    pdb_file='seed.pdb',
+                    run=True,
+                    system_name='structure',
+                    path='script.tleap'
+                )
+                # Apply hmr to new topologies
+                self.hmr_prmtop(top_fn=os.path.join(destination, 'structure.prmtop'))
+            else:
+                os.symlink(
+                    os.path.relpath(self.meta.loc[traj_id]['top_abs_fn']),
+                    'structure.prmtop'
+                )
             # Write information from provenance to file
             information = [
                 'Parent trajectory:\t{}'.format(self.meta.loc[traj_id]['traj_fn']),
                 'Frame number:\t{}'.format(frame_id),
                 'Topology:\t{}'.format(self.meta.loc[traj_id]['top_fn']),
-                ''  # Leave an empty line at end of file
+                ''
             ]
-            provenance_fn = os.path.join(destination, 'provenance.txt')
+            provenance_fn = 'provenance.txt'
             with open(provenance_fn, 'w+') as f:
                 f.write('\n'.join(information))
 
+            # When finished, update sim_count and go back to base dir to repeat
             sim_count += 1
+            os.chdir(basedir)
+
 
     def hmr_prmtop(self, top_fn, save=True):
         """
