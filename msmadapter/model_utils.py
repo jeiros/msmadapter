@@ -73,7 +73,8 @@ def apply_percentile_search(count_array, percentile, desired_length, search_type
                             msm=None, max_iter=500):
     """
     Search for
-    :param count_array: np.array of counts in microstates. Shape (n_microstates,)
+    :param count_array: np.array of counts in microstates.
+        Shape should be(n_microstates,)
     :param percentile: float, initial percentile to look below from
     :param desired_length: int, length of final list of pairs
     :param search_type: str, has to be 'clusterer' or 'msm'

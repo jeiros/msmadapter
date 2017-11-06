@@ -30,6 +30,9 @@ from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
 logger = logging.getLogger(__name__)
 
 class App(object):
+    """
+    Handles the creation of all the necessary files to set up and run the simulations
+    """
 
     def __init__(self, generator_folder='generators', data_folder='data',
                  input_folder='input', filtered_folder='filtered',
@@ -101,7 +104,7 @@ class App(object):
 
     def prepare_spawns(self, spawns, epoch):
         """
-        Prepare the prmtop and inpcrd files of the selected spawns
+        Prepare the prmtop and restart/inpcrd files of the selected spawns
         :param spawns: list of tuples, (traj_id, frame_id)
         :param epoch: int, Epoch the selected spawns belong to
         """
