@@ -3,3 +3,5 @@ pandas
 mdtraj
 msmbuilder
 msmexplorer
+mdrun
+matplotlib
