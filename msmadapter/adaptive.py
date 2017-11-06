@@ -256,7 +256,7 @@ class Adaptive(object):
     """
 
     def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600,
-                 model=None, app=None):
+                 model=None, app=None, atoms_to_load='all'):
         self.nmin = nmin
         self.nmax = nmax
         self.nepochs = nepochs
@@ -275,6 +275,7 @@ class Adaptive(object):
         self.traj_dict = None
         self.current_epoch = self.app.ongoing_trajs
         self.spawns = None
+        self.atoms_to_load = atoms_to_load
 
     def __repr__(self):
         return '''Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={},
@@ -405,7 +406,9 @@ class Adaptive(object):
         """
         i, row = irow
         logger.info('Loading {}'.format(row['traj_fn']))
-        traj = mdtraj.load(row['traj_fn'], top=row['top_fn'], stride=self.stride)
+        atom_ids = mdtraj.load_topology(row['top_fn']).select(self.atoms_to_load)
+        logger.debug('Will load {} atoms'.format(len(atom_ids)))
+        traj = mdtraj.load(row['traj_fn'], top=row['top_fn'], stride=self.stride, atom_indices=atom_ids)
         return i, traj
 
     def get_traj_dict(self):
