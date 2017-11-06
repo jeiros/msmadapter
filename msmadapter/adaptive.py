@@ -195,7 +195,7 @@ class App(object):
     def prepare_PBS_jobs(self, folders_glob, skeleton_function):
 
         folder_fnames_list = glob(folders_glob)
-        cwd = os.getcwd()
+        basedir = os.getcwd()
 
         for input_folder in folder_fnames_list:
             system_name = input_folder.split('/')[-1].split('_')[0]  # just eXXsYY
@@ -247,7 +247,7 @@ class App(object):
             with open('Production_cmds.in', 'w+') as f:
                 f.write(cmds)
 
-            os.chdir(cwd)
+            os.chdir(basedir)
 
 
 class Adaptive(object):
