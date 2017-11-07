@@ -28,4 +28,4 @@ f.savefig('spawns.png', dpi=300)
 ```
 
 
-![Image of Yaktocat](spawns.png)
+![Spanws Image](./spawns.png)
