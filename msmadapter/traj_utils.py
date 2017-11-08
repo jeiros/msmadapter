@@ -46,6 +46,7 @@ def get_ttrajs(sctrajs, tica):
 
 
 def create_folder(folder_name):
+    "Create a folder in folder_name path if it does not exist."
     if not os.path.exists(folder_name):
         os.mkdir(folder_name)
 
