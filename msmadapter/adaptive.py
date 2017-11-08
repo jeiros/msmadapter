@@ -163,7 +163,7 @@ class App(object):
                     path='script.tleap'
                 )
                 # Apply hmr to new topologies
-                self.hmr_prmtop(top_fn=os.path.join(destination, 'structure.prmtop'))
+                self.hmr_prmtop(top_fn='structure.prmtop')
             else:
                 os.symlink(
                     os.path.relpath(self.meta.loc[traj_id]['top_abs_fn']),
