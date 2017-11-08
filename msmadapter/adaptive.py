@@ -64,16 +64,23 @@ class App(object):
 
     def __repr__(self):
         return '''App(generator_folder={}, data_folder={}, input_folder={},
-                    filtered_folder={}, model_folder={}, ngpus={})'''.format(
+                    filtered_folder={}, model_folder={}, ngpus={},
+                    meta={}, project_name={}, user_HPC={}, from_solvated={})'''.format(
             self.generator_folder,
             self.data_folder,
             self.input_folder,
             self.filtered_folder,
             self.model_folder,
-            self.ngpus
+            self.ngpus,
+            self.meta,
+            self.project_name,
+            self.user_HPC,
+            self.from_solvated,
         )
 
     def initialize_folders(self):
+        "Create folders for adaptive simulation if they do not exist under the current path"
+        logger.info('Initializing folders')
         create_folder(self.generator_folder)
         create_folder(self.data_folder)
         create_folder(self.input_folder)
@@ -82,7 +89,7 @@ class App(object):
         create_folder(self.build_folder)
 
     def build_metadata(self, meta):
-        """Builds an msmbuilder metadata object"""
+        "Builds an msmbuilder metadata object"
         if meta is None:
             parser = NumberedRunsParser(
                 traj_fmt='run-{run}.nc',
@@ -97,16 +104,18 @@ class App(object):
 
     @property
     def finished_trajs(self):
+        "Count how many trajs are inside the data_folder"
         return len(glob('/'.join([self.data_folder, '*nc'])))
 
     @property
     def ongoing_trajs(self):
+        "Count how many trajs there are inside the input_folder"
         return len(glob('/'.join([self.input_folder, '*nc'])))
 
 
     def prepare_spawns(self, spawns, epoch):
         """
-        Prepare the prmtop and inpcrd files of the selected spawns
+        Prepare the prmtop and inpcrd files of the selected list of spawns.
         :param spawns: list of tuples, (traj_id, frame_id)
         :param epoch: int, Epoch the selected spawns belong to
         """
@@ -115,11 +124,11 @@ class App(object):
         for traj_id, frame_id in spawns:
             logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
 
-            folder_name = 'e{}s{}_t{}f{}'.format(epoch, sim_count, traj_id, frame_id)
+            folder_name = 'e{:02d}s{:02d}_t{:02d}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
             destination = os.path.join(self.input_folder, folder_name)
             create_folder(destination)
 
-            if self.from_solvated:
+            if not self.from_solvated:
                 # Add files from build folder to destination folder so tleap can read them
                 # since we're not retrieving frame from an already solvated trajectory
                 if not os.path.exists(self.build_folder):
@@ -154,7 +163,7 @@ class App(object):
                     path='script.tleap'
                 )
                 # Apply hmr to new topologies
-                self.hmr_prmtop(top_fn=os.path.join(destination, 'structure.prmtop'))
+                self.hmr_prmtop(top_fn='structure.prmtop')
             else:
                 os.symlink(
                     os.path.relpath(self.meta.loc[traj_id]['top_abs_fn']),
@@ -198,7 +207,8 @@ class App(object):
         basedir = os.getcwd()
 
         for input_folder in folder_fnames_list:
-            system_name = input_folder.split('/')[-1].split('_')[0]  # just eXXsYY
+            system_name = input_folder.split('/')[-1].split('_')[0]  # get eXXsYY from input/eXXsYY
+            # create data/eXXsYY if it does not exist already
             data_folder = os.path.realpath(os.path.join(self.data_folder, system_name))
 
             if not os.path.exists(data_folder):
@@ -223,9 +233,6 @@ class App(object):
             script_dir = os.path.dirname(__file__)  # Absolute path the script is in
             templates_path = 'templates'
             for input_file in glob(os.path.join(script_dir, templates_path, '*in')):
-                logger.info('Copying {}'.format(input_file))
-                logger.info(os.path.realpath(input_file))
-                logger.info(os.path.basename(input_file))
                 shutil.copyfile(
                     os.path.realpath(input_file),
                     os.path.basename(input_file)
@@ -273,9 +280,9 @@ class Adaptive(object):
 
     def __repr__(self):
         return '''Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={},
-                         timestep={}, model={}, app={})'''.format(
+                         timestep={}, model={}, atoms_to_load={}, app={})'''.format(
             self.nmin, self.nmax, self.nepochs, self.stride, self.sleeptime,
-            self.timestep, self.model, repr(self.app))
+            self.timestep, self.model, self.atoms_to_load,self.app)
 
     def run(self):
         """
@@ -462,7 +469,7 @@ class Adaptive(object):
                 logger.info('Loading model pkl file {}'.format(self.model_pkl_fname))
                 model = load_generic(self.model_pkl_fname)
             else:
-                logger.info('Building default model')
+                logger.info('Building default model based on dihedrals')
                 # build a lag time of 1 ns for tICA and msm
                 # if the stride is too big and we can't do that, just use 1 frame and report how much that is in ns
                 lag_time = max(1, int(1 / self.timestep))
@@ -488,10 +495,3 @@ class Adaptive(object):
         Save a model to disk in pickle format
         """
         save_generic(self.model, self.model_pkl_fname)
-
-
-if __name__ == "__main__":
-    app = App(meta='meta.pandas.pickl')
-    ad = Adaptive(app=app, stride=20)
-    ad.fit_model()
-    ad.respawn_from_MSM()

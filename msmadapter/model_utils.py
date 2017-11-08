@@ -6,6 +6,12 @@ logger = logging.getLogger(__name__)
 
 
 def retrieve_MSM(model):
+    """
+    Retrieve a MarkovStateModel object from a model
+    :param model: sklearn.pipeline.Pipeline, the model to retrieve the MSM from
+    :return msm: the MarkovStateModel inside the model
+    :raises ValueError: if last step of model is not from the msmbuilder.msm module
+    """
     logger.info('Retrieving MSM from model')
     if 'msm' in model.named_steps.keys():
         msm = model.named_steps['msm']
@@ -19,6 +25,12 @@ def retrieve_MSM(model):
 
 
 def retrieve_clusterer(model):
+    """
+    Retrieve a clusterer object from a model
+    :param model: sklearn.pipeline.Pipeline, the model to retrieve the clusterer from
+    :return clusterer: the clusterer object inside the model
+    :raises ValueError: if last step of model is not from the msmbuilder.cluster module
+    """
     logger.info('Retrieving clusterer from model')
     if 'clusterer' in model.named_steps.keys():
         clusterer = model.named_steps['clusterer']
@@ -30,6 +42,12 @@ def retrieve_clusterer(model):
 
 
 def retrieve_feat(model):
+    """
+    Retrieve a featurizer object from a model
+    :param model: sklearn.pipeline.Pipeline, the model to retrieve the featurizer from
+    :return feat: the featurizer object inside the model
+    :raises ValueError: if last step of model is not from the msmbuilder.featurizer module
+    """
     logger.info('Retrieving featurizer from model')
     if 'feat' in model.named_steps.keys():
         feat = model.named_steps['feat']
@@ -41,7 +59,12 @@ def retrieve_feat(model):
 
 
 def retrieve_scaler(model):
-
+    """
+    Retrieve a scaler object from a model
+    :param model: sklearn.pipeline.Pipeline, the model to retrieve the scaler from
+    :return scaler: the scaler object inside the model
+    :raises ValueError: if last step of model is not from the msmbuilder.preprocessing module
+    """
     if 'scaler' in model.named_steps.keys():
         scaler = model.named_steps['scaler']
     else:
@@ -57,6 +80,12 @@ def retrieve_scaler(model):
 
 
 def retrieve_decomposer(model):
+    """
+    Retrieve a decomposer object (tICA, PCA...) from a model
+    :param model: sklearn.pipeline.Pipeline, the model to retrieve the decomposer from
+    :return decomposer: the decomposer object inside the model
+    :raises ValueError: if last step of model is not from the msmbuilder.decomposition module
+    """
     logger.info('Retrieving decomposer from model')
     if 'tICA' in model.named_steps.keys():
         decomposer = model.named_steps['tICA']
@@ -99,6 +128,9 @@ def apply_percentile_search(count_array, percentile, desired_length, search_type
         low_count_ids = numpy.where(
             count_array < numpy.percentile(count_array, percentile)
         )[0]  # numpy.where gives back a tuple with empty second element
+
+        if type(low_count_ids) != list:
+            low_count_ids = list(low_count_ids)
 
         if search_type == 'msm':
             low_cluster_ids = []

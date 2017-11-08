@@ -46,6 +46,7 @@ def get_ttrajs(sctrajs, tica):
 
 
 def create_folder(folder_name):
+    "Create a folder in folder_name path if it does not exist."
     if not os.path.exists(folder_name):
         os.mkdir(folder_name)
 
@@ -110,7 +111,7 @@ def write_cpptraj_script(traj, top, frame1=1, frame2=1, outfile=None,
     return cmds
 
 
-def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 35', counterions='220',
+def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 40', counterions='250',
                        system_name='seed_wat', write=True, path='script.tleap',
                        run=False):
     """
@@ -127,10 +128,18 @@ def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 35', counterio
     script_dir = os.path.dirname(__file__)  # Absolute path the script is in
     relative_path = 'templates/template.tleap'
     shutil.copyfile(
-        os.path.join(script_dir, relative_path), './template.tleap')
+        os.path.join(script_dir, relative_path),
+        './template.tleap'
+    )
     with open('./template.tleap', 'r') as f:
         cmds = Template(f.read())
-    ligand_name = os.path.splitext(os.path.basename(glob('*off')[0]))[0]
+
+    # Check if there are any files with .off extension (e.g: ligand.off)
+    if len(glob('*off')) >= 1:
+        # Get the name of the file, without the extension (e.g: ligand)
+        ligand_name = os.path.splitext(os.path.basename(glob('*off')[0]))[0]
+    else:
+        ligand_name = ''
     cmds = cmds.substitute(
         pdb_file=pdb_file,
         box_dimensions=box_dimensions,
