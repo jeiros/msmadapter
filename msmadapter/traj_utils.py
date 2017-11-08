@@ -110,7 +110,7 @@ def write_cpptraj_script(traj, top, frame1=1, frame2=1, outfile=None,
     return cmds
 
 
-def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 35', counterions='220',
+def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 40', counterions='250',
                        system_name='seed_wat', write=True, path='script.tleap',
                        run=False):
     """
