@@ -495,10 +495,3 @@ class Adaptive(object):
         Save a model to disk in pickle format
         """
         save_generic(self.model, self.model_pkl_fname)
-
-
-if __name__ == "__main__":
-    app = App(meta='meta.pandas.pickl')
-    ad = Adaptive(app=app, stride=20)
-    ad.fit_model()
-    ad.respawn_from_MSM()
