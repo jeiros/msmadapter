@@ -128,7 +128,9 @@ def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 40', counterio
     script_dir = os.path.dirname(__file__)  # Absolute path the script is in
     relative_path = 'templates/template.tleap'
     shutil.copyfile(
-        os.path.join(script_dir, relative_path), './template.tleap')
+        os.path.join(script_dir, relative_path),
+        './template.tleap'
+    )
     with open('./template.tleap', 'r') as f:
         cmds = Template(f.read())
 
