@@ -130,7 +130,13 @@ def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 40', counterio
         os.path.join(script_dir, relative_path), './template.tleap')
     with open('./template.tleap', 'r') as f:
         cmds = Template(f.read())
-    ligand_name = os.path.splitext(os.path.basename(glob('*off')[0]))[0]
+
+    # Check if there are any files with .off extension (e.g: ligand.off)
+    if len(glob('*off')) >= 1:
+        # Get the name of the file, without the extension (e.g: ligand)
+        ligand_name = os.path.splitext(os.path.basename(glob('*off')[0]))[0]
+    else:
+        ligand_name = ''
     cmds = cmds.substitute(
         pdb_file=pdb_file,
         box_dimensions=box_dimensions,
