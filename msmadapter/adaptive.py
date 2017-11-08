@@ -124,11 +124,11 @@ class App(object):
         for traj_id, frame_id in spawns:
             logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
 
-            folder_name = 'e{}s{}_t{}f{}'.format(epoch, sim_count, traj_id, frame_id)
+            folder_name = 'e{:02d}s{:02d}_t{:02d}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
             destination = os.path.join(self.input_folder, folder_name)
             create_folder(destination)
 
-            if self.from_solvated:
+            if not self.from_solvated:
                 # Add files from build folder to destination folder so tleap can read them
                 # since we're not retrieving frame from an already solvated trajectory
                 if not os.path.exists(self.build_folder):
