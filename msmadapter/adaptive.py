@@ -64,13 +64,18 @@ class App(object):
 
     def __repr__(self):
         return '''App(generator_folder={}, data_folder={}, input_folder={},
-                    filtered_folder={}, model_folder={}, ngpus={})'''.format(
+                    filtered_folder={}, model_folder={}, ngpus={},
+                    meta={}, project_name={}, user_HPC={}, from_solvated={})'''.format(
             self.generator_folder,
             self.data_folder,
             self.input_folder,
             self.filtered_folder,
             self.model_folder,
-            self.ngpus
+            self.ngpus,
+            self.meta,
+            self.project_name,
+            self.user_HPC,
+            self.from_solvated,
         )
 
     def initialize_folders(self):
@@ -273,9 +278,9 @@ class Adaptive(object):
 
     def __repr__(self):
         return '''Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={},
-                         timestep={}, model={}, app={})'''.format(
+                         timestep={}, model={}, atoms_to_load={}, app={})'''.format(
             self.nmin, self.nmax, self.nepochs, self.stride, self.sleeptime,
-            self.timestep, self.model, repr(self.app))
+            self.timestep, self.model, self.atoms_to_load,self.app)
 
     def run(self):
         """
