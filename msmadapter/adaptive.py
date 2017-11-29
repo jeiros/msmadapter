@@ -20,7 +20,7 @@ from msmbuilder.preprocessing import RobustScaler
 from parmed.amber import AmberParm
 from parmed.tools import HMassRepartition
 from sklearn.pipeline import Pipeline
-
+import numpy
 from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
     retrieve_scaler, retrieve_decomposer, apply_percentile_search
 from .pbs_utils import generate_mdrun_skeleton, simulate_in_pqigould
@@ -124,7 +124,7 @@ class App(object):
         for traj_id, frame_id in spawns:
             logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
 
-            folder_name = 'e{:02d}s{:02d}_{:02d}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
+            folder_name = 'e{:02d}s{:02d}_{}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
             destination = os.path.join(self.input_folder, folder_name)
             create_folder(destination)
 

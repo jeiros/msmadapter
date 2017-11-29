@@ -99,17 +99,26 @@ def retrieve_decomposer(model):
 
 
 def apply_percentile_search(count_array, percentile, desired_length, search_type='clusterer',
-                            msm=None, max_iter=500):
+                            msm=None, max_iter=500, step=0.5):
     """
-    Search for
-    :param count_array: np.array of counts in microstates.
-        Shape should be(n_microstates,)
-    :param percentile: float, initial percentile to look below from
-    :param desired_length: int, length of final list of pairs
-    :param search_type: str, has to be 'clusterer' or 'msm'
-    :param msm: MarkovStateModel, needed if search_type='msm'
-    :param max_iter: int, maximum number of iterations for the search
-    :return low_count_ids: list, list of indices of microstates that have low counts below the percentile
+    Search for entries in an array whose population is below a given percentile.
+    Iteratively increase or decrease the percentile until a `desired_length`
+    number of entries are found.
+
+    Parameters
+    ----------
+    count_array: np.array of counts in microstates.
+        Shape should be equal to (n_microstates, )
+    percentile: float, initial percentile to look below from
+    desired_length: int, length of final list of pairs
+    search_type: str, has to be 'clusterer' or 'msm'
+    msm: MarkovStateModel, needed if search_type='msm'
+    max_iter: int, maximum number of iterations for the search
+    step: float, amount by which to increase or decrease the percentile
+
+    Returns
+    -------
+    low_count_ids: list, list of indices of microstates that have low counts below the percentile
         that matches the length of desired_length
     """
 
@@ -120,8 +129,6 @@ def apply_percentile_search(count_array, percentile, desired_length, search_type
 
     # Initiate the search for candidate frames amongst the trajectories
     logger.info('Looking for low populated microstates')
-    logger.info('Initial percentile threshold set to {:02f}'.format(percentile))
-
     low_count_ids = []
     iterations = 0
     while not len(low_count_ids) == desired_length:
