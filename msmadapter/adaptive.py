@@ -312,20 +312,38 @@ class Adaptive(object):
                 self.current_epoch += 1
                 finished = True
 
-    def respawn_from_MSM(self, percentile=0.5):
+    def respawn_from_MSM(self, percentile=0.5, search_type='populations'):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
-        We look for frames in the trajectories that are nearby regions with low population in the MSM equilibrium
 
-        :param percentile: float, The percentile below which to look for low populated microstates of the MSM
-        :return: a list of tuples, each tuple being (traj_id, frame_id)
+        i) We can look for frames in the trajectories that are nearby regions with low population in the MSM equilibrium
+        ii) We can also look for microstates that have low counts of transitions out of them
+
+        Parameters
+        ----------
+        percentile: float, The percentile below which to look for low populated microstates of the MSM
+        search_type: str, either 'populations' or 'counts'
+
+        Returns
+        -------
+        selected_states: a list of tuples, each tuple being (traj_id, frame_id)
         """
 
         msm = retrieve_MSM(self.model)
         clusterer = retrieve_clusterer(self.model)
 
+        if search_type not in ['populations', 'counts']:
+            raise ValueError("search_type is not 'populations' or 'counts'")
+
+        if search_type == 'counts':
+            # Counts amount of transitions out of each microstate of the MSM
+            count_matrix = numpy.sum(msm.countsmat_, axis=1)
+        else:
+            # The equilibrium population (stationary eigenvector) of transmat_
+            count_matrix = msm.populations_
+
         low_counts_ids = apply_percentile_search(
-            count_array=msm.populations_,
+            count_array=count_matrix,
             percentile=percentile,
             desired_length=self.app.ngpus,
             search_type='msm',
@@ -335,12 +353,13 @@ class Adaptive(object):
         if self.ttrajs is None:
             self.ttrajs = self.get_tica_trajs()
 
-        # Finally, find frames in the trajectories that are nearby the selected cluster centers (low populated in the MSM)
+        # Find frames in the trajectories that are nearby the selected cluster centers
         # Only retrieve one frame per cluster center
-        return sample_states(
+        selected_states =  sample_states(
             trajs=self.ttrajs,
             state_centers=clusterer.cluster_centers_[low_counts_ids]
         )
+        return selected_states
 
     def respawn_from_tICs(self, dims=(0, 1)):
         """

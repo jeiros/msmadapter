@@ -147,15 +147,35 @@ def apply_percentile_search(count_array, percentile, desired_length, search_type
 
         # Change percentile threshold to reach desired number of frames
         if len(low_count_ids) < desired_length:
-            percentile += 0.5
+            percentile += step
         if len(low_count_ids) > desired_length:
-            if (len(low_count_ids) - 1) == desired_length:
-                low_count_ids.pop()
-            percentile - + 0.5
+            low_count_ids = list(low_count_ids)[:desired_length]
 
-        logger.info('Percentiles is at {} and found {} frames'.format(percentile, len(low_count_ids)))
         iterations += 1
         # Logic to stop search if we get stuck
+        # This can happen if there are repeated entries all with the same minimal value
+        # And the percentile keeps being shifted back and forth oscillating around the
+        # value were this minimal counts are
         if (percentile > 100) or (iterations > max_iter):
+            if len(low_count_ids) < desired_length:
+                # This can happen if we are going to break the while loop with the percentile being lower than
+                # the minimal value. In such a case, just give the entries whose values are minimal
+                low_count_ids = numpy.where(
+                    count_array == count_array.min()
+                )[0]
             break
-    return list(low_count_ids)
+
+
+
+    # There could be a larger amount of entries in the array whose counts are all equal
+    # and lower than the minimal percentile possible. In that case, the length of the low_count_ids
+    # list is larger than the chosen `desired_length`. If so,  we drop elements from it
+    # from the end to reduce it to be the required length
+    low_count_ids = list(low_count_ids)
+    if len(low_count_ids) > desired_length:
+        logger.warning("""Could not find {} entries in the count array.
+        Dropping {} entries from it to enforce desired length.""".format(desired_length,
+                                                                  len(low_count_ids) - desired_length))
+        low_count_ids = low_count_ids[:desired_length]
+
+    return low_count_ids
