@@ -3,7 +3,7 @@ import numpy
 import msmexplorer as msme
 
 
-def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red'):
+def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red', base_size=10, label=None):
     if ax is None:
         ax = pp.gca()
 
@@ -11,12 +11,14 @@ def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red'):
         ax.scatter(
             tica_trajs[traj_i][frame_i, obs[0]],
             tica_trajs[traj_i][frame_i, obs[1]],
-            color=color
+            color=color,
+            s=base_size,
+            marker='*',
         )
     return ax
 
 
-def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1)):
+def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1), cmap='magma'):
     if ax is None:
         f, ax = pp.subplots(figsize=figsize)
 
@@ -25,31 +27,24 @@ def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1)):
         txx, ax=ax, obs=obs, alpha=1,
         n_levels=6,
         xlabel='tIC 1', ylabel='tIC 2',
-        labelsize=14
+        labelsize=14, cmap=cmap
     )
 
     return ax
 
 
-def plot_clusters(clusterer, ax=None, obs=(0, 1), base_size=1,
+def plot_clusters(clusterer, ax=None, obs=(0, 1), base_size=50,
                   alpha=0.5, color='yellow'):
     if ax is None:
         ax = pp.gca()
 
     prune = clusterer.cluster_centers_[:, obs]
+    scale = clusterer.counts_ / numpy.max(clusterer.counts_)
 
     ax.scatter(
         prune[:, 0],
         prune[:, 1],
-        s=base_size / 5,
-        alpha=1,
-        color='black'
-    )
-
-    ax.scatter(
-        prune[:, 0],
-        prune[:, 1],
-        s=clusterer.counts_ * base_size,
+        s=scale * base_size,
         alpha=alpha,
         color=color
     )
