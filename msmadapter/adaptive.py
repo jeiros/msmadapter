@@ -119,12 +119,16 @@ class App(object):
         Builds an msmbuilder metadata object
         """
         if meta is None:
-            parser = NumberedRunsParser(
-                traj_fmt='run-{run}.nc',
-                top_fn='structure.prmtop',
-                step_ps=200
-            )
-            meta = gather_metadata('/'.join([self.data_folder, '*nc']), parser)
+            try:
+                parser = NumberedRunsParser(
+                    traj_fmt='run-{run}.nc',
+                    top_fn='structure.prmtop',
+                    step_ps=200
+                )
+                meta = gather_metadata('/'.join([self.data_folder, '*nc']), parser)
+            except:
+                logger.warning("Could not automatically build metadata")
+                return None
         else:
             if not isinstance(meta, pd.DataFrame):
                 meta = load_meta(meta)
