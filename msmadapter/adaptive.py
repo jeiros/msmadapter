@@ -5,7 +5,7 @@ from functools import partial
 from glob import glob
 from multiprocessing import Pool
 from string import Template
-
+import subprocess
 import mdtraj
 import pandas as pd
 from mdrun.Simulation import Simulation
@@ -29,26 +29,32 @@ from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
 
 logger = logging.getLogger(__name__)
 
+
 class App(object):
     """
-    Handles the creation of all the necessary files to set up and run the simulations
+    Handles the creation of all the necessary files to set up and run the
+    simulations
     """
 
     def __init__(self, generator_folder='generators', data_folder='data',
                  input_folder='input', filtered_folder='filtered',
-                 model_folder='model', build_folder='build', ngpus=4, meta=None,
-                 project_name='adaptive', user_HPC='je714', from_solvated=False):
+                 model_folder='model', build_folder='build', ngpus=4,
+                 meta=None, project_name='adaptive', user='je714',
+                 from_solvated=False):
         """
-        :param generator_folder:
-        :param data_folder:
-        :param input_folder:
-        :param filtered_folder:
-        :param model_folder:
-        :param build_folder:
-        :param ngpus:
-        :param meta:
-        :param project_name:
-        :param user_HPC:
+        Parameters
+        ----------
+        :generator_folder: str
+        :data_folder: str
+        :input_folder: str
+        :filtered_folder: str
+        :model_folder: str
+        :build_folder: str
+        :ngpus: int
+        :meta: str
+        :project_name: str
+        :user: str
+        :from_solvated: bool
         """
         self.generator_folder = generator_folder
         self.data_folder = data_folder
@@ -59,27 +65,47 @@ class App(object):
         self.ngpus = ngpus
         self.meta = self.build_metadata(meta)
         self.project_name = project_name
-        self.user_HPC = user_HPC
+        self.user = user
         self.from_solvated = from_solvated
 
-    def __repr__(self):
-        return '''App(generator_folder={}, data_folder={}, input_folder={},
-                    filtered_folder={}, model_folder={}, ngpus={},
-                    meta={}, project_name={}, user_HPC={}, from_solvated={})'''.format(
-            self.generator_folder,
-            self.data_folder,
-            self.input_folder,
-            self.filtered_folder,
-            self.model_folder,
-            self.ngpus,
-            self.meta,
-            self.project_name,
-            self.user_HPC,
-            self.from_solvated,
-        )
+    @property
+    def finished_trajs(self):
+        "Count how many trajs are inside the data_folder"
+        return len(glob('/'.join([self.data_folder, '*nc'])))
+
+    @property
+    def completed_trajs(self):
+        "Count how many trajs there are inside the input_folder"
+        counter = 0
+        folders_in_input_folder = glob('{}/*'.format(self.input_folder))
+        for folder in folders_in_input_folder:
+            if os.path.isdir(folder):
+                counter += 1
+        return counter
+
+    @property
+    def gpus_in_use(self):
+        """
+        This command shows how many GPUS are being used:
+        $ nvidia-smi --query-compute-apps=pid --format=csv
+        pid
+        27044
+        27278
+
+        So we can pipe it into wc -l to count the lines and then deduct
+        one from it to know how many GPUs are in use
+        """
+        bash_cmd = 'nvidia-smi \
+            --query-compute-apps=pid,process_name,used_memory \
+            --format=csv | wc -l'
+        output = subprocess.check_output(['bash', '-c', bash_cmd])
+        return int(output) - 1
 
     def initialize_folders(self):
-        "Create folders for adaptive simulation if they do not exist under the current path"
+        """
+        Create folders for adaptive simulation if they do not exist
+        under the current path
+        """
         logger.info('Initializing folders')
         create_folder(self.generator_folder)
         create_folder(self.data_folder)
@@ -89,7 +115,9 @@ class App(object):
         create_folder(self.build_folder)
 
     def build_metadata(self, meta):
-        "Builds an msmbuilder metadata object"
+        """
+        Builds an msmbuilder metadata object
+        """
         if meta is None:
             parser = NumberedRunsParser(
                 traj_fmt='run-{run}.nc',
@@ -101,17 +129,6 @@ class App(object):
             if not isinstance(meta, pd.DataFrame):
                 meta = load_meta(meta)
         return meta
-
-    @property
-    def finished_trajs(self):
-        "Count how many trajs are inside the data_folder"
-        return len(glob('/'.join([self.data_folder, '*nc'])))
-
-    @property
-    def ongoing_trajs(self):
-        "Count how many trajs there are inside the input_folder"
-        return len(glob('/'.join([self.input_folder, '*nc'])))
-
 
     def prepare_spawns(self, spawns, epoch):
         """
@@ -144,8 +161,15 @@ class App(object):
             else:
                 outfile = 'seed.pdb'
             write_cpptraj_script(
-                traj=os.path.relpath(os.path.join(basedir, self.meta.loc[traj_id]['traj_fn'])),
-                top=os.path.relpath(self.meta.loc[traj_id]['top_abs_fn']),
+                traj=os.path.relpath(
+                    os.path.join(
+                        basedir,
+                        self.meta.loc[traj_id]['traj_fn']
+                    )
+                ),
+                top=os.path.relpath(
+                    self.meta.loc[traj_id]['top_abs_fn']
+                ),
                 frame1=frame_id,
                 frame2=frame_id,
                 outfile=outfile,
@@ -164,7 +188,9 @@ class App(object):
                 self.hmr_prmtop(top_fn='structure.prmtop')
             else:
                 os.symlink(
-                    os.path.relpath(self.meta.loc[traj_id]['top_abs_fn']),
+                    os.path.relpath(
+                        self.meta.loc[traj_id]['top_abs_fn']
+                    ),
                     'structure.prmtop'
                 )
             # Write information from provenance to file
@@ -181,7 +207,6 @@ class App(object):
             # When finished, update sim_count and go back to base dir to repeat
             sim_count += 1
             os.chdir(basedir)
-
 
     def hmr_prmtop(self, top_fn, save=True):
         """
@@ -205,19 +230,26 @@ class App(object):
         basedir = os.getcwd()
 
         for input_folder in folder_fnames_list:
-            system_name = input_folder.split('/')[-1].split('_')[0]  # get eXXsYY from input/eXXsYY
+            # get eXXsYY from input/eXXsYY
+            system_name = input_folder.split('/')[-1].split('_')[0]
             # create data/eXXsYY if it does not exist already
-            data_folder = os.path.realpath(os.path.join(self.data_folder, system_name))
+            data_folder = os.path.realpath(
+                os.path.join(
+                    self.data_folder,
+                    system_name
+                )
+            )
 
             if not os.path.exists(data_folder):
                 os.mkdir(data_folder)
+
             create_symlinks(files=os.path.join(input_folder, 'structure*'),
                             dst_folder=os.path.realpath(data_folder))
 
             os.chdir(data_folder)
             skeleton = skeleton_function(
                 system_name=system_name,
-                job_directory=os.path.join('/work/{}'.format(self.user_HPC),
+                job_directory=os.path.join('/work/{}'.format(self.user),
                                            self.project_name, system_name),
                 destination=os.path.realpath(data_folder)
             )
@@ -250,6 +282,7 @@ class App(object):
 
 
 class Adaptive(object):
+
     def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600,
                  model=None, app=None, atoms_to_load='all'):
         self.nmin = nmin
@@ -268,7 +301,7 @@ class Adaptive(object):
         self.model = self.build_model(model)
         self.ttrajs = None
         self.traj_dict = None
-        self.current_epoch = self.app.ongoing_trajs
+        self.current_epoch = 1
         self.spawns = None
         self.atoms_to_load = atoms_to_load
 
@@ -276,7 +309,7 @@ class Adaptive(object):
         return '''Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={},
                          timestep={}, model={}, atoms_to_load={}, app={})'''.format(
             self.nmin, self.nmax, self.nepochs, self.stride, self.sleeptime,
-            self.timestep, self.model, self.atoms_to_load,self.app)
+            self.timestep, self.model, self.atoms_to_load, self.app)
 
     def run(self):
         """
@@ -353,7 +386,7 @@ class Adaptive(object):
 
         # Find frames in the trajectories that are nearby the selected cluster centers
         # Only retrieve one frame per cluster center
-        selected_states =  sample_states(
+        selected_states = sample_states(
             trajs=self.ttrajs,
             state_centers=clusterer.cluster_centers_[low_counts_ids]
         )
