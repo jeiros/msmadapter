@@ -129,16 +129,14 @@ class App(object):
             create_folder(destination)
 
             if not self.from_solvated:
-                # Add files from build folder to destination folder so tleap can read them
-                # since we're not retrieving frame from an already solvated trajectory
-                if not os.path.exists(self.build_folder):
-                    raise ValueError('{} folder does not exist. Create it first.'.format(self.build_folder))
-                else:
-                    for fname in glob(os.path.join(self.build_folder, '*')):
-                        os.symlink(
-                            os.path.realpath(fname),
-                            os.path.join(destination, os.path.basename(fname))
-                        )
+                # Add files from build folder to destination folder so tleap
+                # can read them since we're not retrieving frame from an
+                # already solvated trajectory
+                create_symlinks(
+                    files=glob(os.path.join(self.build_folder, '*')),
+                    dst_folder=os.path.realpath(destination)
+                )
+
             # All files in destination, so now move into it
             os.chdir(destination)
             if self.from_solvated:
