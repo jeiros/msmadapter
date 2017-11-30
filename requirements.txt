@@ -5,3 +5,4 @@ msmbuilder
 msmexplorer
 mdrun
 matplotlib
+parmed
