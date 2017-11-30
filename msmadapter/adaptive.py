@@ -288,7 +288,7 @@ class App(object):
             os.chdir(basedir)
 
     def run_local_GPU(self, folders_glob):
-        bash_cmd = "export CUDA_VISIBLE_DEVICES=0"
+        bash_cmd = "export CUDA_VISIBLE_DEVICES=0\n"
         if len(glob(folders_glob)) > (self.ngpus - self.gpus_in_use):
             raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(len(glob(folders_glob)), self.ngpus - self.gpus_in_use))
 
@@ -301,7 +301,10 @@ class App(object):
             cd ..
             """
 
-        output = subprocess.check_output(['bash', '-c', bash_cmd])
+        with open('run.sh', 'w') as f:
+            f.write(bash_cmd)
+
+        output = subprocess.call(['bash ./run.sh', shell=True])
         return output
 
 
