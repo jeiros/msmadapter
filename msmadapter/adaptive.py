@@ -17,15 +17,14 @@ from msmbuilder.io import load_generic, save_generic, gather_metadata, \
 from msmbuilder.io.sampling import sample_states, sample_dimension
 from msmbuilder.msm import MarkovStateModel
 from msmbuilder.preprocessing import RobustScaler
-from parmed.amber import AmberParm
-from parmed.tools import HMassRepartition
+
 from sklearn.pipeline import Pipeline
 import numpy
 from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
     retrieve_scaler, retrieve_decomposer, apply_percentile_search
 from .pbs_utils import generate_mdrun_skeleton, simulate_in_pqigould
-from .traj_utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
-    write_cpptraj_script, write_tleap_script, create_symlinks
+from .utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
+    write_cpptraj_script, write_tleap_script, create_symlinks, hmr_prmtop
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +159,8 @@ class App(object):
 
             # All files in destination, so now move into it
             os.chdir(destination)
+
+            # Structure
             if self.from_solvated:
                 outfile = 'seed.ncrst'
             else:
@@ -181,6 +182,7 @@ class App(object):
                 run=True
             )
 
+            # Topology
             if not self.from_solvated:
                 write_tleap_script(
                     pdb_file='seed.pdb',
@@ -189,7 +191,7 @@ class App(object):
                     path='script.tleap'
                 )
                 # Apply hmr to new topologies
-                self.hmr_prmtop(top_fn='structure.prmtop')
+                hmr_prmtop(top_fn='structure.prmtop')
             else:
                 os.symlink(
                     os.path.relpath(
@@ -197,71 +199,8 @@ class App(object):
                     ),
                     'structure.prmtop'
                 )
-            # Write information from provenance to file
-            information = [
-                'Parent trajectory:\t{}'.format(self.meta.loc[traj_id]['traj_fn']),
-                'Frame number:\t{}'.format(frame_id),
-                'Topology:\t{}'.format(self.meta.loc[traj_id]['top_fn']),
-                ''
-            ]
-            provenance_fn = 'provenance.txt'
-            with open(provenance_fn, 'w+') as f:
-                f.write('\n'.join(information))
-
-            # When finished, update sim_count and go back to base dir to repeat
-            sim_count += 1
-            os.chdir(basedir)
-
-    def hmr_prmtop(self, top_fn, save=True):
-        """
-        Use parmed to apply HMR to a topology file
-        :param top_fn: str, path to the prmtop file
-        :param save:  bool, whether to save the hmr prmtop
-        :return top: the hrm'ed prmtop file
-        """
-        top = AmberParm(top_fn)
-        hmr = HMassRepartition(top)
-        hmr.execute()
-        if save:
-            top_out_fn = top_fn.split('.')[0]
-            top_out_fn += '_hmr.prmtop'
-            top.save(top_out_fn)
-        return top
-
-    def prepare_PBS_jobs(self, folders_glob, skeleton_function):
-
-        folder_fnames_list = glob(folders_glob)
-        basedir = os.getcwd()
-
-        for input_folder in folder_fnames_list:
-            # get eXXsYY from input/eXXsYY
-            system_name = input_folder.split('/')[-1].split('_')[0]
-            # create data/eXXsYY if it does not exist already
-            data_folder = os.path.realpath(
-                os.path.join(
-                    self.data_folder,
-                    system_name
-                )
-            )
-
-            if not os.path.exists(data_folder):
-                os.mkdir(data_folder)
-
-            create_symlinks(files=os.path.join(input_folder, 'structure*'),
-                            dst_folder=os.path.realpath(data_folder))
-
-            os.chdir(data_folder)
-            skeleton = skeleton_function(
-                system_name=system_name,
-                job_directory=os.path.join('/work/{}'.format(self.user),
-                                           self.project_name, system_name),
-                destination=os.path.realpath(data_folder)
-            )
-            sim = Simulation(skeleton)
-            sim.writeSimulationFiles()
 
             # AMBER input files
-
             job_length = sim.job_length
             nsteps = int(job_length * 1e6 / 4)  # ns to steps, using 4 fs / step
             script_dir = os.path.dirname(__file__)  # Absolute path the script is in
@@ -282,7 +221,91 @@ class App(object):
             with open('Production_cmds.in', 'w+') as f:
                 f.write(cmds)
 
+
+            # Write information from provenance to file
+            information = [
+                'Parent trajectory:\t{}'.format(self.meta.loc[traj_id]['traj_fn']),
+                'Frame number:\t{}'.format(frame_id),
+                'Topology:\t{}'.format(self.meta.loc[traj_id]['top_fn']),
+                ''
+            ]
+            provenance_fn = 'provenance.txt'
+            with open(provenance_fn, 'w+') as f:
+                f.write('\n'.join(information))
+
+
+            # When finished, update sim_count and go back to base dir to repeat
+            sim_count += 1
             os.chdir(basedir)
+
+
+    def prepare_PBS_jobs(self, folders_glob, skeleton_function):
+        """
+        Uses the mdrun package to automate the generation of PBS scripts for the launch of each
+        simulation to be run on GPUs in the HPC facility at ICL.
+        Each simulation can be split in several shorter 'jobs'.
+        Paramters
+        ----------
+        :folders_glob: str, a glob expression of the folders containing the necessary files for AMBER simulation
+            (a prmtop and a restart files)
+        :skeleton_function: callable, The function to specify the settings of the HPC job
+
+        Returns
+        -------
+        None
+        """
+
+        folder_fnames_list = glob(folders_glob)
+        basedir = os.getcwd()
+
+        for input_folder in folder_fnames_list:
+            # get eXXsYY from input/eXXsYY
+            system_name = input_folder.split('/')[-1].split('_')[0]
+            # create data/eXXsYY if it does not exist already
+            data_folder = os.path.realpath(
+                os.path.join(
+                    self.data_folder,
+                    system_name
+                )
+            )
+            create_folder(data_folder)
+            # Symlink the files inside the input folder to the data folder
+            create_symlinks(files=os.path.join(input_folder, 'structure*'),
+                            dst_folder=os.path.realpath(data_folder))
+            create_symlinks(files=os.path.join(input_folder, '*.in'),
+                            dst_folder=os.path.realpath(data_folder))
+            # Move inside the data folder
+            os.chdir(data_folder)
+            skeleton = skeleton_function(
+                system_name=system_name,
+                job_directory=os.path.join('/work/{}'.format(self.user),
+                                           self.project_name, system_name),
+                destination=os.path.realpath(data_folder)
+            )
+            sim = Simulation(skeleton)
+            sim.writeSimulationFiles()
+
+            os.chdir(basedir)
+
+    def run_local_GPU(self, folders_glob):
+        bash_cmd = "export CUDA_VISIBLE_DEVICES=0"
+        if len(folders_glob) != (self.ngpus - self.gpus_in_use):
+            raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(len(folders_glob), self.ngpus - self.gpus_in_use)
+
+        for folder in folders_glob:
+            bash_cmd += 'cd {}\n'.format(folder)
+            bash_cmd += """nohup pmemd.cuda_SPFP -O -i Production.in \
+            -c seed.ncrst -p structure.prmtop -r Production.rst \
+            -x Production.nc &
+            ((CUDA_VISIBLE_DEVICES++))
+            cd ..
+            """
+
+        output = subprocess.check_output(['bash', '-c', bash_cmd])
+        return output
+
+
+
 
 
 class Adaptive(object):

@@ -4,6 +4,8 @@ import os
 from string import Template
 import shutil
 from glob import glob
+from parmed.amber import AmberParm
+from parmed.tools import HMassRepartition
 
 
 def get_ftrajs(traj_dict, featurizer):
@@ -43,12 +45,6 @@ def get_ttrajs(sctrajs, tica):
     for k, v in sctrajs.items():
         ttrajs[k] = tica.partial_transform(v)
     return ttrajs
-
-
-def create_folder(folder_name):
-    "Create a folder in folder_name path if it does not exist."
-    if not os.path.exists(folder_name):
-        os.mkdir(folder_name)
 
 
 def traj_from_stateinds(inds, meta):
@@ -155,6 +151,12 @@ def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 40', counterio
     return cmds
 
 
+def create_folder(folder_name):
+    "Create a folder in folder_name path if it does not exist."
+    if not os.path.exists(folder_name):
+        os.mkdir(folder_name)
+
+
 def create_symlinks(files, dst_folder):
     """
     Create symlinks inside dst_folder for all the files passed as a glob expression
@@ -166,3 +168,20 @@ def create_symlinks(files, dst_folder):
         fname_trimmed = fn.split('/')[-1]
         dst_fname = os.path.join(dst_folder, fname_trimmed)
         os.symlink(os.path.realpath(fn), dst_fname)
+
+
+def hmr_prmtop(top_fn, save=True):
+    """
+    Use parmed to apply HMR to a topology file
+    :param top_fn: str, path to the prmtop file
+    :param save:  bool, whether to save the hmr prmtop
+    :return top: the hrm'ed prmtop file
+    """
+    top = AmberParm(top_fn)
+    hmr = HMassRepartition(top)
+    hmr.execute()
+    if save:
+        top_out_fn = top_fn.split('.')[0]
+        top_out_fn += '_hmr.prmtop'
+        top.save(top_out_fn)
+    return top
