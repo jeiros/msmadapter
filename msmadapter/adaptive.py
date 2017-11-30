@@ -290,9 +290,9 @@ class App(object):
     def run_local_GPU(self, folders_glob):
         bash_cmd = "export CUDA_VISIBLE_DEVICES=0"
         if len(folders_glob) != (self.ngpus - self.gpus_in_use):
-            raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(len(folders_glob), self.ngpus - self.gpus_in_use)
+            raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(len(folders_glob), self.ngpus - self.gpus_in_use))
 
-        for folder in folders_glob:
+        for folder in glob(folders_glob):
             bash_cmd += 'cd {}\n'.format(folder)
             bash_cmd += """nohup pmemd.cuda_SPFP -O -i Production.in \
             -c seed.ncrst -p structure.prmtop -r Production.rst \
