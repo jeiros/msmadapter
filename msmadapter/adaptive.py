@@ -304,7 +304,7 @@ class App(object):
         with open('run.sh', 'w') as f:
             f.write(bash_cmd)
 
-        output = subprocess.call(['bash ./run.sh', shell=True])
+        output = subprocess.check_output(['bash', './run.sh'])
         return output
 
 
