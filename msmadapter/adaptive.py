@@ -582,7 +582,7 @@ mode : {mode}
 
         return ttrajs
 
-    def build_model(self, user_defined_model=None):
+    def build_model(self, user_defined_model):
         """
         Load or build a model (Pipeline from scikit-learn) to do all the transforming and fitting
         :param user_defined_model: Either a string (to load from disk) or a Pipeline object to use as model
@@ -596,7 +596,10 @@ mode : {mode}
                 logger.info('Building default model based on dihedrals')
                 # build a lag time of 1 ns for tICA and msm
                 # if the stride is too big and we can't do that, just use 1 frame and report how much that is in ns
-                lag_time = max(1, int(1 / self.timestep))
+                if self.timestep is None:
+                    lag_time = 1
+                else:
+                    lag_time = max(1, int(1 / self.timestep))
                 if lag_time == 1:
                     logger.warning('Using a lag time of {:.2f} ns for the tICA and MSM'.format(self.timestep))
                 model = Pipeline([
