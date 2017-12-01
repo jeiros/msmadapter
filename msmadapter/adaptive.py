@@ -152,12 +152,14 @@ class App(object):
         """
         sim_count = 1
         basedir = os.getcwd()
+        spawn_folder_names = []
         for traj_id, frame_id in spawns:
             logger.info('Building simulation {} of epoch {}'.format(sim_count, epoch))
 
             folder_name = 'e{:02d}s{:02d}_{}f{:04d}'.format(epoch, sim_count, traj_id, frame_id)
             destination = os.path.join(self.input_folder, folder_name)
             create_folder(destination)
+            spawn_folder_names.append(destination)
 
             if not self.from_solvated:
                 # Add files from build folder to destination folder so tleap
@@ -246,6 +248,7 @@ class App(object):
             # When finished, update sim_count and go back to base dir to repeat
             sim_count += 1
             os.chdir(basedir)
+        return spawn_folder_names
 
     def prepare_PBS_jobs(self, folders_glob, skeleton_function):
         """
@@ -295,13 +298,13 @@ class App(object):
 
             os.chdir(basedir)
 
-    def run_GPUs_bash(self, folders_glob, run=True):
+    def run_GPUs_bash(self, folders, run=True):
         """
         Create a bash script to run the jobs locally in the GPUs
         Requires pmemd.cuda_SPFP to be installed
         Parameters
         ----------
-        folders_glob: str, a glob expression of the folders that have the
+        folders: str, a glob expression of the folders that have the
             necessary input files to run an MD simulation (topology,
             restart and amber input production file)
 
@@ -309,18 +312,26 @@ class App(object):
         -------
         output: str, the output of running the bash script
         """
+        if type(folders) == str:
+            folders = glob(folders)
+        elif type(folders) == list:
+            pass
+        else:
+            raise ValueError('folders must be of type str or list')
+
         bash_cmd = "export CUDA_VISIBLE_DEVICES=0\n"
-        num_folders = len(glob(folders_glob))
+        bash_cmd = "export curr_dir=$(pwd)"
+        num_folders = len(folders)
         if num_folders > self.available_gpus:
             raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(num_folders, self.available_gpus))
 
-        for folder in glob(folders_glob):
+        for folder in folders:
             bash_cmd += 'cd {}\n'.format(folder)
             bash_cmd += """nohup pmemd.cuda_SPFP -O -i Production.in \
 -c seed.ncrst -p structure.prmtop -r Production.rst \
 -x Production.nc &
 ((CUDA_VISIBLE_DEVICES++))
-cd ..
+cd ${curr_dir}
 """
         # Write bash script to file
         with open('run.sh', 'w') as f:
@@ -346,10 +357,7 @@ class Adaptive(object):
             self.app = app
         if not isinstance(self.app, App):
             raise ValueError('self.app is not an App object')
-        if self.app.meta is not None:
-            self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
-        else:
-            self.timestep = None
+
         self.model_pkl_fname = os.path.join(self.app.model_folder, 'model.pkl')
         self.model = self.build_model(model)
         self.ttrajs = None
@@ -365,12 +373,12 @@ class Adaptive(object):
     def __repr__(self):
 
         doc = """Adaptive Search
+---------------
 nmin : {nmin}
 nmax : {nmax}
 nepochs : {nepochs}
 stride : {stride}
 sleeptime : {sleeptime}
-timestep : {timestep}
 model : {model}
 atoms_to_load : {atoms_to_load}
 app : {app}
@@ -382,7 +390,6 @@ mode : {mode}
             nepochs=self.nepochs,
             stride=self.stride,
             sleeptime=self.sleeptime,
-            timestep=self.timestep,
             model=self.model,
             atoms_to_load=self.atoms_to_load,
             app=self.app,
@@ -401,25 +408,16 @@ mode : {mode}
             else:
                 self.app.initialize_folders()
                 self.fit_model()
-                #self.spawns = self.respawn_from_tICs()
-                self.spawns = self.respawn_from_MSM()
-                self.app.prepare_spawns(self.spawns, self.current_epoch)
-
-                self.app.prepare_PBS_jobs(
-                    folders_glob=os.path.join(self.app.input_folder, 'e{:02d}*'.format(self.current_epoch)),
-                    skeleton_function=partial(
-                        simulate_in_pqigould,
-                        func=generate_mdrun_skeleton,
-                        host='cx1-15-6-1',
-                        destination=None,
-                        job_directory=None,
-                        system_name=None
+                self.spawns = self.respawn_from_MSM(search_type='counts')
+                spawn_folders = self.app.prepare_spawns(self.spawns, self.current_epoch)
+                if self.mode == 'local':
+                    self.app.run_GPUs_bash(
+                        folders=spawn_folders
                     )
-                )
                 logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
-                # sleep(self.sleeptime)
+                sleep(self.sleeptime)
                 self.current_epoch += 1
-                finished = True
+
 
     def respawn_from_MSM(self, percentile=0.5, search_type='populations'):
         """
@@ -594,14 +592,18 @@ mode : {mode}
                 model = load_generic(self.model_pkl_fname)
             else:
                 logger.info('Building default model based on dihedrals')
+
                 # build a lag time of 1 ns for tICA and msm
-                # if the stride is too big and we can't do that, just use 1 frame and report how much that is in ns
-                if self.timestep is None:
-                    lag_time = 1
-                else:
+                # if the stride is too big and we can't do that
+                # use 1 frame and report how much that is in ns
+                if self.app.meta is not None:
+                    self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
                     lag_time = max(1, int(1 / self.timestep))
-                if lag_time == 1:
-                    logger.warning('Using a lag time of {} ns for the tICA and MSM'.format(self.timestep))
+                    logger.info('Using a lag time of {} ns for the tICA and MSM'.format(lag_time * self.timestep))
+                else:
+                    self.timestep = None
+                    lag_time = 1
+                    logger.warning('Cannot determine timestep. Defaulting to 1 frame.'.format(lag_time))
                 model = Pipeline([
                     ('feat', DihedralFeaturizer()),
                     ('scaler', RobustScaler()),
