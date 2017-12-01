@@ -365,15 +365,14 @@ class Adaptive(object):
 
         doc = """Adaptive Search
 nmin : {nmin}
-nmin : {nmin},
-nmax : {nmax},
-nepochs : {nepochs},
-stride : {stride},
-sleeptime : {sleeptime},
-timestep : {timestep},
-model : {model},
-atoms_to_load : {atoms_to_load},
-app : {app},
+nmax : {nmax}
+nepochs : {nepochs}
+stride : {stride}
+sleeptime : {sleeptime}
+timestep : {timestep}
+model : {model}
+atoms_to_load : {atoms_to_load}
+app : {app}
 mode : {mode}
 """
         return doc.format(
