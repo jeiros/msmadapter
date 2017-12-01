@@ -234,7 +234,6 @@ App: {total} GPUs, {in_use} in use
             with open('Production_cmds.in', 'w+') as f:
                 f.write(cmds)
 
-
             # Write information from provenance to file
             information = [
                 'Parent trajectory:\t{}'.format(self.meta.loc[traj_id]['traj_fn']),
@@ -246,11 +245,9 @@ App: {total} GPUs, {in_use} in use
             with open(provenance_fn, 'w+') as f:
                 f.write('\n'.join(information))
 
-
             # When finished, update sim_count and go back to base dir to repeat
             sim_count += 1
             os.chdir(basedir)
-
 
     def prepare_PBS_jobs(self, folders_glob, skeleton_function):
         """
@@ -300,34 +297,46 @@ App: {total} GPUs, {in_use} in use
 
             os.chdir(basedir)
 
-    def run_local_GPU(self, folders_glob):
+    def run_GPUs_bash(self, folders_glob, run=True):
+        """
+        Create a bash script to run the jobs locally in the GPUs
+        Requires pmemd.cuda_SPFP to be installed
+        Parameters
+        ----------
+        folders_glob: str, a glob expression of the folders that have the
+            necessary input files to run an MD simulation (topology,
+            restart and amber input production file)
+
+        Returns
+        -------
+        output: str, the output of running the bash script
+        """
         bash_cmd = "export CUDA_VISIBLE_DEVICES=0\n"
-        if len(glob(folders_glob)) > (self.ngpus - self.gpus_in_use):
-            raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(len(glob(folders_glob)), self.ngpus - self.gpus_in_use))
+        num_folders = len(glob(folders_glob))
+        if num_folders > self.available_gpus:
+            raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(num_folders, self.available_gpus))
 
         for folder in glob(folders_glob):
             bash_cmd += 'cd {}\n'.format(folder)
             bash_cmd += """nohup pmemd.cuda_SPFP -O -i Production.in \
-            -c seed.ncrst -p structure.prmtop -r Production.rst \
-            -x Production.nc &
-            ((CUDA_VISIBLE_DEVICES++))
-            cd ..
-            """
-
+-c seed.ncrst -p structure.prmtop -r Production.rst \
+-x Production.nc &
+((CUDA_VISIBLE_DEVICES++))
+cd ..
+"""
+        # Write bash script to file
         with open('run.sh', 'w') as f:
             f.write(bash_cmd)
-
-        output = subprocess.check_output(['bash', './run.sh'])
+        # Run bash script
+        if run:
+            output = subprocess.check_output(['bash', './run.sh'])
         return output
-
-
-
 
 
 class Adaptive(object):
 
     def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600,
-                 model=None, app=None, atoms_to_load='all'):
+                 model=None, app=None, atoms_to_load='all', mode='local'):
         self.nmin = nmin
         self.nmax = nmax
         self.nepochs = nepochs
@@ -347,6 +356,10 @@ class Adaptive(object):
         self.current_epoch = 1
         self.spawns = None
         self.atoms_to_load = atoms_to_load
+        if mode not in ['local', 'remote']:
+            raise ValueError('mode has to be local or remote')
+        else:
+            self.mode = mode
 
     def __repr__(self):
 
