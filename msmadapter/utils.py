@@ -63,6 +63,33 @@ def traj_from_stateinds(inds, meta):
     return traj
 
 
+def write_production_file(job_length=250, timestep_fs=4):
+    """
+    Write an AMBER production file to run Molecular Dynamics
+    :param job_length:
+    :param timestep_fs:
+    :return:
+    """
+    nsteps = int(job_length * 1e6 / 4)  # ns to steps, using 4 fs / step
+    script_dir = os.path.dirname(__file__)  # Absolute path the script is in
+    templates_path = 'templates'
+    for input_file in glob(os.path.join(script_dir, templates_path, '*in')):
+        shutil.copyfile(
+            os.path.realpath(input_file),
+            os.path.basename(input_file)
+        )
+
+    with open('Production_cmds.in', 'r') as f:
+        cmds = Template(f.read())
+    cmds = cmds.substitute(
+        nsteps=nsteps,
+        ns=sim.job_length
+    )
+
+    with open('Production_cmds.in', 'w+') as f:
+        f.write(cmds)
+
+
 def write_cpptraj_script(traj, top, frame1=1, frame2=1, outfile=None,
                          write=True, path='script.cpptraj', run=False):
     """

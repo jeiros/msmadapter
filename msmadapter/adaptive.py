@@ -22,9 +22,9 @@ from sklearn.pipeline import Pipeline
 import numpy
 from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
     retrieve_scaler, retrieve_decomposer, apply_percentile_search
-from .pbs_utils import generate_mdrun_skeleton, simulate_in_pqigould
 from .utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
-    write_cpptraj_script, write_tleap_script, create_symlinks, hmr_prmtop
+    write_cpptraj_script, write_tleap_script, create_symlinks, hmr_prmtop, \
+    write_production_file
 
 logger = logging.getLogger(__name__)
 
@@ -221,25 +221,7 @@ class App(object):
                 )
 
             # AMBER input files
-            job_length = sim.job_length
-            nsteps = int(job_length * 1e6 / 4)  # ns to steps, using 4 fs / step
-            script_dir = os.path.dirname(__file__)  # Absolute path the script is in
-            templates_path = 'templates'
-            for input_file in glob(os.path.join(script_dir, templates_path, '*in')):
-                shutil.copyfile(
-                    os.path.realpath(input_file),
-                    os.path.basename(input_file)
-                )
-
-            with open('Production_cmds.in', 'r') as f:
-                cmds = Template(f.read())
-            cmds = cmds.substitute(
-                nsteps=nsteps,
-                ns=sim.job_length
-            )
-
-            with open('Production_cmds.in', 'w+') as f:
-                f.write(cmds)
+            write_production_file()
 
             # Write information from provenance to file
             information = [
