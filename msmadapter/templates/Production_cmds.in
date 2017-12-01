@@ -1,7 +1,7 @@
  Production
  &cntrl
    imin=0,
-   ntx=5,
+   ntx=1, ! Coordinates, but no velocities, will be read;
    irest=1,
    ntc=2,
    ntf=2,
@@ -9,11 +9,16 @@
    ntt=3,
    gamma_ln=1.0,
    temp0=300.0,
-   ntpr=50000, ! save info file every 0.2 ns
+   ntpr=500000, ! save info file every 2 ns
    ntwr=500000, ! save rst file every 2 ns
    ntwx=50000, ! save coords every 0.2 ns
    dt=0.004, ! use a 4 fs time step
    ig=-1,
-   ntb=2, ntp=1, cut=8.0, barostat=2, ioutfm=1, ntxo=2,
+   ntb=2,
+   ntp=1,
+   cut=8.0,
+   barostat=2,
+   ioutfm=1,
+   ntxo=2,
  /
 
