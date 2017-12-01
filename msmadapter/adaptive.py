@@ -68,9 +68,7 @@ class App(object):
         self.from_solvated = from_solvated
 
     def __repr__(self):
-        doc = """
-App: {total} GPUs, {in_use} in use
-"""
+        doc = 'App: {total} GPUs, {in_use} in use'
         return doc.format(
             total=self.ngpus,
             in_use=self.gpus_in_use
@@ -349,7 +347,7 @@ class Adaptive(object):
         if not isinstance(self.app, App):
             raise ValueError('self.app is not an App object')
         if self.app.meta is not None:
-        self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
+            self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
         self.model_pkl_fname = os.path.join(self.app.model_folder, 'model.pkl')
         self.model = self.build_model(model)
         self.ttrajs = None
