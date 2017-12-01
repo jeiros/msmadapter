@@ -1,25 +1,24 @@
 import logging
 import os
-import shutil
-from functools import partial
+import subprocess
 from glob import glob
 from multiprocessing import Pool
-from string import Template
-import subprocess
+from time import sleep
+
 import mdtraj
+import numpy
 import pandas as pd
 from mdrun.Simulation import Simulation
 from msmbuilder.cluster import MiniBatchKMeans
 from msmbuilder.decomposition import tICA
 from msmbuilder.featurizer import DihedralFeaturizer
 from msmbuilder.io import load_generic, save_generic, gather_metadata, \
-    NumberedRunsParser, load_meta
+    NumberedRunsParser, load_meta, GenericParser
 from msmbuilder.io.sampling import sample_states, sample_dimension
 from msmbuilder.msm import MarkovStateModel
 from msmbuilder.preprocessing import RobustScaler
-from time import sleep
 from sklearn.pipeline import Pipeline
-import numpy
+
 from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
     retrieve_scaler, retrieve_decomposer, apply_percentile_search
 from .utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
@@ -333,11 +332,10 @@ cd ${curr_dir}
 
 class Adaptive(object):
 
-    def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600,
+    def __init__(self, nmin=2, nepochs=20, stride=1, sleeptime=3600,
                  model=None, app=None, atoms_to_load='all', mode='local',
                  current_epoch=1):
         self.nmin = nmin
-        self.nmax = nmax
         self.nepochs = nepochs
         self.stride = stride
         self.sleeptime = sleeptime
@@ -365,7 +363,6 @@ class Adaptive(object):
         doc = """Adaptive Search
 ---------------
 nmin : {nmin}
-nmax : {nmax}
 nepochs : {nepochs}
 stride : {stride}
 sleeptime : {sleeptime}
@@ -376,7 +373,6 @@ mode : {mode}
 """
         return doc.format(
             nmin=self.nmin,
-            nmax=self.nmax,
             nepochs=self.nepochs,
             stride=self.stride,
             sleeptime=self.sleeptime,
@@ -390,29 +386,37 @@ mode : {mode}
         """
         :return:
         """
+        if self.mode == 'remote':
+            raise NotImplementedError('No auto run for remote jobs.')
         finished = False
         while not finished:
             if self.current_epoch == self.nepochs:
                 logger.info('Reached {} epochs. Finishing.'.format(self.current_epoch))
                 finished = True
-            else:
-                self.app.initialize_folders()
-                self.fit_model()
-                self.spawns = self.respawn_from_MSM(search_type='counts')
+
+            elif self.app.available_gpus >= self.nmin:
+                n_spawns = self.app.available_gpus
                 if self.current_epoch == 1:
+                    self.app.initialize_folders()
                     spawn_folders = '{}/*'.format(self.app.generator_folder)
                 else:
+                    self.update_metadata()
+                    self.model = self.build_model()
+                    self.fit_model()
+                    self.spawns = self.respawn_from_MSM(search_type='counts', n_spawns=n_spawns)
                     spawn_folders = self.app.prepare_spawns(self.spawns, self.current_epoch)
-                if self.mode == 'local':
-                    self.app.run_GPUs_bash(
-                        folders=spawn_folders
-                    )
-                logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
-                sleep(self.sleeptime)
+
+                self.app.run_GPUs_bash(
+                    folders=spawn_folders
+                )
                 self.current_epoch += 1
+            else:
+                logger.info('{} available GPUs. Minimum per epoch is {}'.format(self.app.available_gpus, self.nmin))
+            logger.info('Going to sleep for {} seconds'.format(self.sleeptime))
+            sleep(self.sleeptime)
 
 
-    def respawn_from_MSM(self, percentile=0.5, search_type='populations'):
+    def respawn_from_MSM(self, percentile=0.5, search_type='populations', n_spawns=self.app.ngpus):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
 
@@ -423,6 +427,7 @@ mode : {mode}
         ----------
         percentile: float, The percentile below which to look for low populated microstates of the MSM
         search_type: str, either 'populations' or 'counts'
+        n_spawns: int, number of spawns to generate
 
         Returns
         -------
@@ -445,7 +450,7 @@ mode : {mode}
         low_counts_ids = apply_percentile_search(
             count_array=count_matrix,
             percentile=percentile,
-            desired_length=self.app.ngpus,
+            desired_length=n_spawns,
             search_type='msm',
             msm=msm
         )
@@ -461,19 +466,25 @@ mode : {mode}
         )
         return selected_states
 
-    def respawn_from_tICs(self, dims=(0, 1)):
+    def respawn_from_tICs(self, dims=(0, 1), n_spawns=self.app.ngpus):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
         Look for frames in the trajectories that are nearby the edge regions of the tIC converted space
 
-        :param dims: tICs to sample from
-        :return chosen_frames: a list of tuples, each tuple being (traj_id, frame_id)
+        Parameters
+        ----------
+        dims: tuple of ints, tICs to sample from
+        n_spawns: int, number of spawns to generate
+
+        Returns
+        -------
+        chosen_frames: list of tuples, each tuple is (traj_id, frame_id)
         """
 
         if self.ttrajs is None:
             self.ttrajs = self.get_tica_trajs()
 
-        frames_per_tIC = max(1, int(self.app.ngpus / len(dims)))
+        frames_per_tIC = max(1, int(n_spawns / len(dims)))
 
         chosen_frames = []
         for d in dims:
@@ -488,13 +499,20 @@ mode : {mode}
 
         return chosen_frames
 
-    def respawn_from_clusterer(self, percentile=0.5):
+    def respawn_from_clusterer(self, percentile=0.5, n_spawns=self.app.ngpus):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
-        Look for frames in the trajectories that are nearby the cluster centers that have low counts
+        Look for frames in the trajectories that are nearby the cluster centers that have low
+        population counts
 
-        :param percentile: float, The percentile below which to look for low populated microstates of the MSM
-        :return: a list of tuples, each tuple being (traj_id, frame_id)
+        Parameters
+        ----------
+        percentile: float, The percentile below which to look for low populated microstates of the clusterer
+        n_spawns: int, number of spawns to generate
+
+        Returns
+        -------
+        list of tuples, each tuple being (traj_id, frame_id)
         """
 
         clusterer = retrieve_clusterer(self.model)
@@ -502,7 +520,7 @@ mode : {mode}
         low_counts_ids = apply_percentile_search(
             count_array=clusterer.counts_,
             percentile=percentile,
-            desired_length=self.app.ngpus,
+            desired_length=n_spawns,
             search_type='clusterer'
         )
 
@@ -611,6 +629,22 @@ mode : {mode}
                 logger.info('Using user defined model')
                 model = user_defined_model
         return model
+
+    def update_metadata(self):
+        parser = GenericParser(
+            fn_re='{}/(e\d+s\d+)_.*/Production.nc'.format(self.app.data_folder),
+            group_names=['sim'],
+            group_transforms=[lambda x: x],
+            top_fn='',
+            step_ps=self.timestep
+        )
+        meta = gather_metadata('{}/e*/*nc'.format(self.app.data_folder), parser)
+        meta['top_fn'] = glob('{}/e*/structure.prmtop'.format(self.app.input_folder))
+        top_abs_fn = [os.path.abspath(t) for t in glob('./{}/e*/structure.prmtop'.format(self.app.input_folder))]
+        traj_abs_fn = [os.path.abspath(t) for t in meta['traj_fn']]
+        meta['top_abs_fn'] = top_abs_fn
+        meta['traj_abs_fn'] = traj_abs_fn
+        self.meta = meta
 
     def _save_model(self):
         """
