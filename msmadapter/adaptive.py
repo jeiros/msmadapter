@@ -601,7 +601,7 @@ mode : {mode}
                 else:
                     lag_time = max(1, int(1 / self.timestep))
                 if lag_time == 1:
-                    logger.warning('Using a lag time of {:.2f} ns for the tICA and MSM'.format(self.timestep))
+                    logger.warning('Using a lag time of {} ns for the tICA and MSM'.format(self.timestep))
                 model = Pipeline([
                     ('feat', DihedralFeaturizer()),
                     ('scaler', RobustScaler()),
