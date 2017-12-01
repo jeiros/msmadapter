@@ -67,6 +67,15 @@ class App(object):
         self.user = user
         self.from_solvated = from_solvated
 
+    def __repr__(self):
+        doc = """
+App: {total} GPUs, {in_use} in use
+"""
+        return doc.format(
+            total=self.ngpus,
+            in_use=self.gpus_in_use
+        )
+
     @property
     def finished_trajs(self):
         "Count how many trajs are inside the data_folder"
@@ -336,10 +345,33 @@ class Adaptive(object):
         self.atoms_to_load = atoms_to_load
 
     def __repr__(self):
-        return '''Adaptive(nmin={}, nmax={}, nepochs={}, stride={}, sleeptime={},
-                         timestep={}, model={}, atoms_to_load={}, app={})'''.format(
-            self.nmin, self.nmax, self.nepochs, self.stride, self.sleeptime,
-            self.timestep, self.model, self.atoms_to_load, self.app)
+
+        doc = """Adaptive Search
+nmin : {nmin}
+nmin : {nmin},
+nmax : {nmax},
+nepochs : {nepochs},
+stride : {stride},
+sleeptime : {sleeptime},
+timestep : {timestep},
+model : {model},
+atoms_to_load : {atoms_to_load},
+app : {app},
+mode : {mode}
+"""
+        return doc.format(
+            nmin=self.nmin,
+            nmin=self.nmin,
+            nmax=self.nmax,
+            nepochs=self.nepochs,
+            stride=self.stride,
+            sleeptime=self.sleeptime,
+            timestep=self.timestep,
+            model=self.model,
+            atoms_to_load=self.atoms_to_load,
+            app=self.app,
+            mode=self.mode,
+        )
 
     def run(self):
         """
