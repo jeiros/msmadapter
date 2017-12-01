@@ -416,7 +416,7 @@ mode : {mode}
             sleep(self.sleeptime)
 
 
-    def respawn_from_MSM(self, percentile=0.5, search_type='populations', n_spawns=self.app.ngpus):
+    def respawn_from_MSM(self,  n_spawns, percentile=0.5, search_type='populations'):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
 
@@ -466,7 +466,7 @@ mode : {mode}
         )
         return selected_states
 
-    def respawn_from_tICs(self, dims=(0, 1), n_spawns=self.app.ngpus):
+    def respawn_from_tICs(self, n_spawns, dims=(0, 1)):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
         Look for frames in the trajectories that are nearby the edge regions of the tIC converted space
@@ -499,7 +499,7 @@ mode : {mode}
 
         return chosen_frames
 
-    def respawn_from_clusterer(self, percentile=0.5, n_spawns=self.app.ngpus):
+    def respawn_from_clusterer(self, n_spawns, percentile=0.5):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
         Look for frames in the trajectories that are nearby the cluster centers that have low
