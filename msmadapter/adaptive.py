@@ -377,7 +377,6 @@ mode : {mode}
 """
         return doc.format(
             nmin=self.nmin,
-            nmin=self.nmin,
             nmax=self.nmax,
             nepochs=self.nepochs,
             stride=self.stride,
