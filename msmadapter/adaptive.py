@@ -147,8 +147,15 @@ class App(object):
     def prepare_spawns(self, spawns, epoch):
         """
         Prepare the prmtop and inpcrd files of the selected list of spawns.
-        :param spawns: list of tuples, (traj_id, frame_id)
-        :param epoch: int, Epoch the selected spawns belong to
+        Parameters
+        ----------
+        spawns: list of tuples, (traj_id, frame_id)
+        epoch: int, Epoch the selected spawns belong to
+
+        Returns
+        -------
+        spawn_folder_names: list of str, List of names of the folders where
+            the spawns have been stored.
         """
         sim_count = 1
         basedir = os.getcwd()
@@ -304,7 +311,7 @@ class App(object):
         Requires pmemd.cuda_SPFP to be installed
         Parameters
         ----------
-        folders: str, a glob expression of the folders that have the
+        folders: str or list, a list of folders (or glob expression) that have the
             necessary input files to run an MD simulation (topology,
             restart and amber input production file)
 
@@ -320,7 +327,7 @@ class App(object):
             raise ValueError('folders must be of type str or list')
 
         bash_cmd = "export CUDA_VISIBLE_DEVICES=0\n"
-        bash_cmd = "export curr_dir=$(pwd)"
+        bash_cmd += "export curr_dir=$(pwd)"
         num_folders = len(folders)
         if num_folders > self.available_gpus:
             raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(num_folders, self.available_gpus))
@@ -345,7 +352,8 @@ cd ${curr_dir}
 class Adaptive(object):
 
     def __init__(self, nmin=1, nmax=2, nepochs=20, stride=1, sleeptime=3600,
-                 model=None, app=None, atoms_to_load='all', mode='local'):
+                 model=None, app=None, atoms_to_load='all', mode='local',
+                 current_epoch=1):
         self.nmin = nmin
         self.nmax = nmax
         self.nepochs = nepochs
@@ -362,7 +370,7 @@ class Adaptive(object):
         self.model = self.build_model(model)
         self.ttrajs = None
         self.traj_dict = None
-        self.current_epoch = 1
+        self.current_epoch = current_epoch
         self.spawns = None
         self.atoms_to_load = atoms_to_load
         if mode not in ['local', 'remote']:
@@ -409,7 +417,10 @@ mode : {mode}
                 self.app.initialize_folders()
                 self.fit_model()
                 self.spawns = self.respawn_from_MSM(search_type='counts')
-                spawn_folders = self.app.prepare_spawns(self.spawns, self.current_epoch)
+                if self.current_epoch == 1:
+                    spawn_folders = '{}/*'.format(self.app.generator_folder)
+                else:
+                    spawn_folders = self.app.prepare_spawns(self.spawns, self.current_epoch)
                 if self.mode == 'local':
                     self.app.run_GPUs_bash(
                         folders=spawn_folders
