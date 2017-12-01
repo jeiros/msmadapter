@@ -109,6 +109,10 @@ App: {total} GPUs, {in_use} in use
         output = subprocess.check_output(['bash', '-c', bash_cmd])
         return int(output) - 1
 
+    @property
+    def available_gpus(self):
+        return self.ngpus - self.gpus_in_use
+
     def initialize_folders(self):
         """
         Create folders for adaptive simulation if they do not exist
