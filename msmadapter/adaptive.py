@@ -17,7 +17,7 @@ from msmbuilder.io import load_generic, save_generic, gather_metadata, \
 from msmbuilder.io.sampling import sample_states, sample_dimension
 from msmbuilder.msm import MarkovStateModel
 from msmbuilder.preprocessing import RobustScaler
-
+from time import sleep
 from sklearn.pipeline import Pipeline
 import numpy
 from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
