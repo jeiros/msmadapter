@@ -86,7 +86,7 @@ def write_production_file(job_length=250, timestep_fs=4):
         ns=job_length
     )
 
-    with open('Production_cmds.in', 'w+') as f:
+    with open('Production.in', 'w+') as f:
         f.write(cmds)
 
 
