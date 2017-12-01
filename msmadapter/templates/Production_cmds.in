@@ -1,8 +1,8 @@
  Production
  &cntrl
-   imin=0,
+   imin=0, ! Run molecular dynamics without any minimization.
    ntx=1, ! Coordinates, but no velocities, will be read;
-   irest=1,
+   irest=0,  ! Do not restart the simulation; instead, run as a new simulation.
    ntc=2,
    ntf=2,
    nstlim=${nsteps}, ! simulate for ${ns} ns
