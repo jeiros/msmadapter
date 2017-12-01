@@ -309,7 +309,7 @@ class App(object):
             raise ValueError('folders must be of type str or list')
 
         bash_cmd = "export CUDA_VISIBLE_DEVICES=0\n"
-        bash_cmd += "export curr_dir=$(pwd)"
+        bash_cmd += "export curr_dir=$(pwd)\n"
         num_folders = len(folders)
         if num_folders > self.available_gpus:
             raise ValueError("Cannot run jobs of {} folders as only {} GPUs are available".format(num_folders, self.available_gpus))
