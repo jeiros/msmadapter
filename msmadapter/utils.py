@@ -83,7 +83,7 @@ def write_production_file(job_length=250, timestep_fs=4):
         cmds = Template(f.read())
     cmds = cmds.substitute(
         nsteps=nsteps,
-        ns=sim.job_length
+        ns=job_length
     )
 
     with open('Production_cmds.in', 'w+') as f:
