@@ -1,7 +1,7 @@
-from . import TestAppBase
+from . import TestAppBase, meta
 import os
 import pandas as pd
-from msmbuilder.io import NumberedRunsParser, gather_metadata
+
 from shutil import rmtree
 from ..pbs_utils import simulate_in_P100s
 
@@ -16,12 +16,7 @@ spawns = [
     (0, 1),
 ]
 epoch = 1
-parser = NumberedRunsParser(
-                    traj_fmt='run-{run}.nc',
-                    top_fn='data_app/runs/structure.prmtop',
-                    step_ps=200
-)
-meta = gather_metadata('/'.join(['data_app/runs/', '*nc']), parser)
+
 
 
 class TestApp(TestAppBase):
