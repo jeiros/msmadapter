@@ -1,1 +1,2 @@
 include msmadapter/templates/*
+include msmadapter/tests/*
