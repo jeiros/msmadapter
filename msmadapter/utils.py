@@ -70,7 +70,7 @@ def write_production_file(job_length=250, timestep_fs=4):
     :param timestep_fs:
     :return:
     """
-    nsteps = int(job_length * 1e6 / 4)  # ns to steps, using 4 fs / step
+    nsteps = int(job_length * 1e6 / timestep_fs)  # ns to steps, using 4 fs / step
     script_dir = os.path.dirname(__file__)  # Absolute path the script is in
     templates_path = 'templates'
     for input_file in glob(os.path.join(script_dir, templates_path, '*in')):
