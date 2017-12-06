@@ -13,6 +13,7 @@ export PATH=$HOME/miniconda3/bin:$PATH
 
 conda install -yq python=$CONDA_PY
 conda update -yq conda
+conda config --add channels omnia
+conda install scipy cython pandas matplotlib
 conda install -yq conda-build jinja2
-conda install -c omnia mdtraj -y
-conda install cython -y
+conda install msmbuilder msmexplorer
