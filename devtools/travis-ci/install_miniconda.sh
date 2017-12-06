@@ -17,3 +17,4 @@ conda config --add channels omnia
 conda install scipy cython pandas matplotlib -yq
 conda install -yq conda-build jinja2
 conda install msmbuilder msmexplorer -yq
+conda install ambertools=17 -c http://ambermd.org/downloads/ambertools/conda/ -yq
