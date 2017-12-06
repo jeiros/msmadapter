@@ -66,21 +66,15 @@ class App(object):
         self.user = user
         self.from_solvated = from_solvated
 
-    def __repr__(self):
-        doc = 'App: {total} GPUs, {in_use} in use'
-        return doc.format(
-            total=self.ngpus,
-            in_use=self.gpus_in_use
-        )
 
     @property
     def finished_trajs(self):
-        "Count how many trajs are inside the data_folder"
+        "Count how many traj_dict are inside the data_folder"
         return len(glob('/'.join([self.data_folder, '*nc'])))
 
     @property
     def completed_trajs(self):
-        "Count how many trajs there are inside the input_folder"
+        "Count how many traj_dict there are inside the input_folder"
         counter = 0
         folders_in_input_folder = glob('{}/*'.format(self.input_folder))
         for folder in folders_in_input_folder:
@@ -171,8 +165,9 @@ class App(object):
                 # Add files from build folder to destination folder so tleap
                 # can read them since we're not retrieving frame from an
                 # already solvated trajectory
+
                 create_symlinks(
-                    files=glob(os.path.join(self.build_folder, '*')),
+                    files=os.path.join(self.build_folder, '*'),
                     dst_folder=os.path.realpath(destination)
                 )
 
@@ -416,7 +411,7 @@ mode : {mode}
             sleep(self.sleeptime)
 
 
-    def respawn_from_MSM(self,  n_spawns, percentile=0.5, search_type='populations'):
+    def respawn_from_MSM(self, n_spawns, percentile=0.5, search_type='populations'):
         """
         Find candidate frames in the trajectories to spawn new simulations from.
 
@@ -580,7 +575,7 @@ mode : {mode}
         scaler = retrieve_scaler(self.model)
         decomposer = retrieve_decomposer(self.model)
 
-        logger.info('Featurizing trajs')
+        logger.info('Featurizing traj_dict')
         ftrajs = get_ftrajs(self.traj_dict, featurizer)
 
         logger.info('Scaling ftrajs')
