@@ -38,7 +38,7 @@ class App(object):
                  input_folder='input', filtered_folder='filtered',
                  model_folder='model', build_folder='build', ngpus=4,
                  meta=None, project_name='adaptive', user='je714',
-                 from_solvated=False):
+                 from_solvated=False, timestep=200):
         """
         Parameters
         ----------
@@ -65,6 +65,7 @@ class App(object):
         self.project_name = project_name
         self.user = user
         self.from_solvated = from_solvated
+        self.timestep = timestep
 
 
     @property
@@ -126,7 +127,7 @@ class App(object):
                 parser = NumberedRunsParser(
                     traj_fmt='run-{run}.nc',
                     top_fn='structure.prmtop',
-                    step_ps=200
+                    step_ps=self.timestep
                 )
                 meta = gather_metadata('/'.join([self.data_folder, '*nc']), parser)
             except:
@@ -136,6 +137,22 @@ class App(object):
             if not isinstance(meta, pd.DataFrame):
                 meta = load_meta(meta)
         return meta
+
+    def update_metadata(self):
+        parser = GenericParser(
+            fn_re='{}/(e\d+s\d+)_.*/Production.nc'.format(self.data_folder),
+            group_names=['sim'],
+            group_transforms=[lambda x: x],
+            top_fn='',
+            step_ps=self.timestep
+        )
+        meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), parser)
+        meta['top_fn'] = glob('{}/e*/structure.prmtop'.format(self.input_folder))
+        top_abs_fn = [os.path.abspath(t) for t in glob('./{}/e*/structure.prmtop'.format(self.input_folder))]
+        traj_abs_fn = [os.path.abspath(t) for t in meta['traj_fn']]
+        meta['top_abs_fn'] = top_abs_fn
+        meta['traj_abs_fn'] = traj_abs_fn
+        self.meta = meta
 
     def prepare_spawns(self, spawns, epoch):
         """
@@ -352,6 +369,8 @@ class Adaptive(object):
             raise ValueError('mode has to be local or remote')
         else:
             self.mode = mode
+        if self.app.meta is not None:
+            self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
 
     def __repr__(self):
 
@@ -359,11 +378,10 @@ class Adaptive(object):
 ---------------
 nmin : {nmin}
 nepochs : {nepochs}
-stride : {stride}
-sleeptime : {sleeptime}
+stride : {stride} frames
+sleeptime : {sleeptime} s
 model : {model}
 atoms_to_load : {atoms_to_load}
-app : {app}
 mode : {mode}
 """
         return doc.format(
@@ -373,7 +391,6 @@ mode : {mode}
             sleeptime=self.sleeptime,
             model=self.model,
             atoms_to_load=self.atoms_to_load,
-            app=self.app,
             mode=self.mode,
         )
 
@@ -395,8 +412,7 @@ mode : {mode}
                     self.app.initialize_folders()
                     spawn_folders = '{}/*'.format(self.app.generator_folder)
                 else:
-                    self.update_metadata()
-                    self.model = self.build_model()
+                    self.app.update_metadata()
                     self.fit_model()
                     self.spawns = self.respawn_from_MSM(search_type='counts', n_spawns=n_spawns)
                     spawn_folders = self.app.prepare_spawns(self.spawns, self.current_epoch)
@@ -603,7 +619,6 @@ mode : {mode}
                 # if the stride is too big and we can't do that
                 # use 1 frame and report how much that is in ns
                 if self.app.meta is not None:
-                    self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
                     lag_time = max(1, int(1 / self.timestep))
                     logger.info('Using a lag time of {} ns for the tICA and MSM'.format(lag_time * self.timestep))
                 else:
@@ -625,21 +640,6 @@ mode : {mode}
                 model = user_defined_model
         return model
 
-    def update_metadata(self):
-        parser = GenericParser(
-            fn_re='{}/(e\d+s\d+)_.*/Production.nc'.format(self.app.data_folder),
-            group_names=['sim'],
-            group_transforms=[lambda x: x],
-            top_fn='',
-            step_ps=self.timestep
-        )
-        meta = gather_metadata('{}/e*/*nc'.format(self.app.data_folder), parser)
-        meta['top_fn'] = glob('{}/e*/structure.prmtop'.format(self.app.input_folder))
-        top_abs_fn = [os.path.abspath(t) for t in glob('./{}/e*/structure.prmtop'.format(self.app.input_folder))]
-        traj_abs_fn = [os.path.abspath(t) for t in meta['traj_fn']]
-        meta['top_abs_fn'] = top_abs_fn
-        meta['traj_abs_fn'] = traj_abs_fn
-        self.meta = meta
 
     def _save_model(self):
         """
