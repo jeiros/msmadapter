@@ -148,10 +148,6 @@ class App(object):
         )
         meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), parser)
         meta['top_fn'] = glob('{}/e*/structure.prmtop'.format(self.input_folder))
-        top_abs_fn = [os.path.abspath(t) for t in glob('./{}/e*/structure.prmtop'.format(self.input_folder))]
-        traj_abs_fn = [os.path.abspath(t) for t in meta['traj_fn']]
-        meta['top_abs_fn'] = top_abs_fn
-        meta['traj_abs_fn'] = traj_abs_fn
         self.meta = meta
 
     def prepare_spawns(self, spawns, epoch):
@@ -204,7 +200,10 @@ class App(object):
                     )
                 ),
                 top=os.path.relpath(
-                    self.meta.loc[traj_id]['top_abs_fn']
+                    os.path.join(
+                        basedir,
+                        self.meta.loc[traj_id]['top_fn']
+                    )
                 ),
                 frame1=frame_id,
                 frame2=frame_id,
@@ -226,7 +225,10 @@ class App(object):
             else:
                 os.symlink(
                     os.path.relpath(
-                        self.meta.loc[traj_id]['top_abs_fn']
+                        os.path.join(
+                            basedir,
+                            self.meta.loc[traj_id]['top_fn']
+                        )
                     ),
                     'structure.prmtop'
                 )
