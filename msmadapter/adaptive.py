@@ -360,19 +360,15 @@ cd ${curr_dir}
         spawn_folder_names = []
         generator_folders = glob(generator_folder_glob)
         for i, folder in enumerate(generator_folders):
-            base_name = 'e01s{:02d}_{}f0000'.format(i + 1, folder)
-            input_destination = os.path.join(self.input_folder, os.path.basename(base_name))
-            data_destination = os.path.join(self.data_folder, os.path.basename(base_name))
+            base_name = 'e01s{:02d}_{}f0000'.format(i + 1, os.path.basename(folder))
+            input_destination = os.path.join(self.input_folder, base_name)
+            data_destination = os.path.join(self.data_folder, base_name)
             create_folder(input_destination)
             create_folder(data_destination)
             spawn_folder_names.append(input_destination)
             create_symlinks(
                 files=os.path.join(folder, '*'),
                 dst_folder=os.path.relpath(input_destination)
-            )
-            create_symlinks(
-                files=os.path.join(input_destination, 'Production.nc'),
-                dst_folder=os.path.relpath(data_destination)
             )
         return spawn_folder_names
 
