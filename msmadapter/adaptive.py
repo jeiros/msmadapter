@@ -344,6 +344,38 @@ cd ${curr_dir}
         return output
 
 
+    def move_generators_to_input(self, generator_folder_glob):
+        """
+        Create symlinks between all the files inside the generator folders provided
+        as a glob string and the input folder destination
+        Parameters
+        ----------
+        generator_folder_glob: str, glob expression matching where the generator folders
+            are located
+
+        Return
+        ------
+        spawn_folder_names: list of str, List with the input folders where the files have
+            been moved
+        """
+        spawn_folder_names = []
+        generator_folders = glob(generator_folder_glob)
+        for i, folder in enumerate(generator_folders):
+            input_folder_name = 'e01s{:02d}_{}f0000'.format(i + 1, traj_id, folder)
+            destination = os.path.join(self.input_folder, input_folder_name)
+            create_folder(destination)
+            spawn_folder_names.append(destination)
+            create_symlinks(
+                files=os.path.join(folder, '*'),
+                dst_folder=os.path.relpath(destination)
+            )
+        return spawn_folder_names
+
+
+
+
+
+
 class Adaptive(object):
 
     def __init__(self, nmin=2, nepochs=20, stride=1, sleeptime=3600,
@@ -412,7 +444,8 @@ mode : {mode}
                 n_spawns = self.app.available_gpus
                 if self.current_epoch == 1:
                     self.app.initialize_folders()
-                    spawn_folders = '{}/*'.format(self.app.generator_folder)
+                    gen_folders = '{}/*'.format(self.app.generator_folder)
+                    spawn_folders = self.app.move_generators_to_input(gen_folders)
                 else:
                     self.app.update_metadata()
                     self.fit_model()
