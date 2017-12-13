@@ -12,8 +12,8 @@ from mdrun.Simulation import Simulation
 from msmbuilder.cluster import MiniBatchKMeans
 from msmbuilder.decomposition import tICA
 from msmbuilder.featurizer import DihedralFeaturizer
-from msmbuilder.io import load_generic, save_generic, gather_metadata, \
-    NumberedRunsParser, load_meta, GenericParser
+from msmbuilder.io import load_generic, save_generic, \
+     load_meta, GenericParser
 from msmbuilder.io.sampling import sample_states, sample_dimension
 from msmbuilder.msm import MarkovStateModel
 from msmbuilder.preprocessing import RobustScaler
@@ -23,7 +23,7 @@ from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
     retrieve_scaler, retrieve_decomposer, apply_percentile_search
 from .utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
     write_cpptraj_script, write_tleap_script, create_symlinks, hmr_prmtop, \
-    write_production_file
+    write_production_file, gather_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -124,12 +124,14 @@ class App(object):
         """
         if meta is None:
             try:
-                parser = NumberedRunsParser(
-                    traj_fmt='run-{run}.nc',
-                    top_fn='structure.prmtop',
+                self.parser = GenericParser(
+                    fn_re='{}/(e\d+s\d+)_.*/Production.nc'.format(self.data_folder),
+                    group_names=['sim'],
+                    group_transforms=[lambda x: x],
+                    top_fn='',
                     step_ps=self.timestep
                 )
-                meta = gather_metadata('/'.join([self.data_folder, '*nc']), parser)
+                meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), parser)
             except:
                 logger.warning("Could not automatically build metadata")
                 return None
@@ -139,14 +141,11 @@ class App(object):
         return meta
 
     def update_metadata(self):
-        parser = GenericParser(
-            fn_re='{}/(e\d+s\d+)_.*/Production.nc'.format(self.data_folder),
-            group_names=['sim'],
-            group_transforms=[lambda x: x],
-            top_fn='',
-            step_ps=self.timestep
-        )
-        meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), parser)
+        """
+        Add the new trajs in the data folder to the metadata object so that they can be
+        used next time we fit the model.
+        """
+        meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), self.parser)
         meta['top_fn'] = glob('{}/e*/structure.prmtop'.format(self.input_folder))
         self.meta = meta
 
@@ -361,19 +360,27 @@ cd ${curr_dir}
         spawn_folder_names = []
         generator_folders = glob(generator_folder_glob)
         for i, folder in enumerate(generator_folders):
-            input_folder_name = 'e01s{:02d}_{}f0000'.format(i + 1, folder)
-            destination = os.path.join(self.input_folder, os.path.basename(input_folder_name))
-            create_folder(destination)
-            spawn_folder_names.append(destination)
+            base_name = 'e01s{:02d}_{}f0000'.format(i + 1, folder)
+            input_destination = os.path.join(self.input_folder, os.path.basename(base_name))
+            data_destination = os.path.join(self.data_folder, os.path.basename(base_name))
+            create_folder(input_destination)
+            create_folder(data_destination)
+            spawn_folder_names.append(input_destination)
             create_symlinks(
                 files=os.path.join(folder, '*'),
-                dst_folder=os.path.relpath(destination)
+                dst_folder=os.path.relpath(input_destination)
+            )
+            create_symlinks(
+                files=os.path.join(input_destination, 'Production.nc'),
+                dst_folder=os.path.relpath(data_destination)
             )
         return spawn_folder_names
 
-
-
-
+    def link_productions(self, src_folders_glob, dst_folders_glob):
+        src_folders = glob(src_folders_glob)
+        dst_folders = glob(dst_folders_glob)
+        if len(src_folders) != len(dst_folders):
+            raise ValueError
 
 
 class Adaptive(object):

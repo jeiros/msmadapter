@@ -212,3 +212,15 @@ def hmr_prmtop(top_fn, save=True):
         top_out_fn += '_hmr.prmtop'
         top.save(top_out_fn)
     return top
+
+def gather_metadata(fn_glob, parser):
+    """Given a glob and a parser object, create a metadata dataframe.
+    Parameters
+    ----------
+    fn_glob : str
+        Glob string to find trajectory files.
+    parser : descendant of _Parser
+        Object that handles conversion of filenames to metadata rows.
+    """
+    meta = pd.DataFrame(parser.parse_fn(fn) for fn in glob.iglob(fn_glob))
+    return meta.set_index(parser.index)
