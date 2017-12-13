@@ -361,7 +361,7 @@ cd ${curr_dir}
         spawn_folder_names = []
         generator_folders = glob(generator_folder_glob)
         for i, folder in enumerate(generator_folders):
-            input_folder_name = 'e01s{:02d}_{}f0000'.format(i + 1, traj_id, folder)
+            input_folder_name = 'e01s{:02d}_{}f0000'.format(i + 1, folder)
             destination = os.path.join(self.input_folder, input_folder_name)
             create_folder(destination)
             spawn_folder_names.append(destination)
