@@ -3,7 +3,7 @@ from subprocess import call, PIPE
 import os
 from string import Template
 import shutil
-from glob import glob
+import glob
 from parmed.amber import AmberParm
 import pandas as pd
 from parmed.tools import HMassRepartition
@@ -74,7 +74,7 @@ def write_production_file(job_length=250, timestep_fs=4):
     nsteps = int(job_length * 1e6 / timestep_fs)  # ns to steps, using 4 fs / step
     script_dir = os.path.dirname(__file__)  # Absolute path the script is in
     templates_path = 'templates'
-    for input_file in glob(os.path.join(script_dir, templates_path, '*in')):
+    for input_file in glob.glob(os.path.join(script_dir, templates_path, '*in')):
         shutil.copyfile(
             os.path.realpath(input_file),
             os.path.basename(input_file)
@@ -159,9 +159,9 @@ def write_tleap_script(pdb_file='seed.pdb', box_dimensions='25 25 40', counterio
         cmds = Template(f.read())
 
     # Check if there are any files with .off extension (e.g: ligand.off)
-    if len(glob('*off')) >= 1:
+    if len(glob.glob('*off')) >= 1:
         # Get the name of the file, without the extension (e.g: ligand)
-        ligand_name = os.path.splitext(os.path.basename(glob('*off')[0]))[0]
+        ligand_name = os.path.splitext(os.path.basename(glob.glob('*off')[0]))[0]
     else:
         ligand_name = ''
     cmds = cmds.substitute(
@@ -191,7 +191,7 @@ def create_symlinks(files, dst_folder):
     :param files: str, glob expression matching the files
     :param dst_folder: str, the destination folder of the symlinks
     """
-    fns_list = glob(files)
+    fns_list = glob.glob(files)
     for fn in fns_list:
         fname_trimmed = fn.split('/')[-1]
         dst_fname = os.path.join(dst_folder, fname_trimmed)
