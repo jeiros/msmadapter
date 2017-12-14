@@ -145,7 +145,14 @@ class App(object):
         Add the new trajs in the data folder to the metadata object so that they can be
         used next time we fit the model.
         """
-        meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), self.parser)
+        parser = GenericParser(
+                    fn_re='{}/(e\d+s\d+)_.*/Production.nc'.format(self.data_folder),
+                    group_names=['sim'],
+                    group_transforms=[lambda x: x],
+                    top_fn='',
+                    step_ps=self.timestep
+                )
+        meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), parser)
         meta['top_fn'] = glob('{}/e*/structure.prmtop'.format(self.input_folder))
         self.meta = meta
 
