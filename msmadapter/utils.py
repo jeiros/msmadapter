@@ -225,3 +225,50 @@ def gather_metadata(fn_glob, parser):
     """
     meta = pd.DataFrame(parser.parse_fn(fn) for fn in glob.iglob(fn_glob))
     return meta.set_index(parser.index)
+
+
+def phosphorylate_pdb_file(pdb_fn, edition_list, pdb_mut_fname, write=True):
+    """
+    Mutates the serines in the pdb provided as a filename
+    to phosphoserines.
+
+    Parameters
+    ----------
+    pdb_fn: str, Name of the PDB file
+    edition_list: list of tuples, List of the editions to make.
+        Each of the elements in the list has to be a tuple like this:
+            ('SER', 271, 'S1P')
+            1st arg is the resname to change
+            2nd arg is the residue index in the original PDB file, will
+                not be change
+            3rd arg is the new residue name, can be either 'S1P' or 'SEP'
+                to choose between the two possible protonation states of
+                a phosphoserine
+    """
+    new_pdb = []
+    with open(pdb_fn, 'r') as f:
+        pdb = f.readlines()
+
+    for line in pdb:
+        if 'ATOM' in line:
+            l_split = line.split()
+            # Current residue attributes
+            c_atom = l_split[2]
+            c_resname = l_split[3]
+            c_resid = int(l_split[4])
+            # Go over list of changes and attempt to change current residue
+            # if it meets the criteria to be changed
+            for change in edition_list:
+                n_resname = change[0]
+                n_resid = change[1]
+                mut_resname = change[2]
+                if c_resname == n_resname and c_resid == n_resid:
+                    line = line.replace(c_resname, mut_resname)
+                    if c_atom == 'HG':
+                        # We need to remove the gamma H from the serine
+                        line = '\n'
+        new_pdb.append(line)
+    if write:
+        with open(pdb_mut_fname, 'w') as f:
+            f.writelines(new_pdb)
+    return new_pdb
