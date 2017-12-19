@@ -87,13 +87,13 @@ def generate_mdrun_skeleton(scheduler='pbs', HPC_job='True', pbs_settings_kwargs
 
 
 def simulate_in_P100s(func, job_directory, system_name, destination):
-    pbs = pbs_settings()  # defaults are for P100 gpus
+    pbs = pbs_settings(walltime='48:0:0', queue=None)
     sim = simulation_details(
         system_name=system_name, inpcrd_file="structure.inpcrd",
         topology_file="structure_hmr.prmtop", start_rst="Heated_eq.rst",
-        input_file="Production_cmds.in", start_time=0,
-        final_time=500, job_length=50, job_directory=job_directory,
-        cuda_version="8.0.44", binary_location="/home/igould/cuda8amber/amber/bin/pmemd.cuda_SPFP",
+        input_file="Production.in", start_time=0,
+        final_time=500, job_length=25, job_directory=job_directory,
+        cuda_version="8.0.44", binary_location="/home/igould/cuda8amber/bin/pmemd.cuda_SPFP",
         pre_simulation_cmd=None, pre_simulation_type="gpu"
     )
     local = local_machine_details(
@@ -110,7 +110,7 @@ def simulate_in_pqigould(func, host, job_directory, system_name, destination):
     sim = simulation_details(
         system_name=system_name, inpcrd_file="structure.inpcrd",
         topology_file="structure_hmr.prmtop", start_rst="Heated_eq.rst",
-        input_file="Production_cmds.in", start_time=0,
+        input_file="Production.in", start_time=0,
         final_time=500, job_length=50, job_directory=job_directory,
         cuda_version="8.0.44", binary_location="/home/igould/cuda8amber/amber/bin/pmemd.cuda_SPFP",
         pre_simulation_cmd=None, pre_simulation_type="gpu"
