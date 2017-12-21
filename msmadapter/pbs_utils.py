@@ -112,7 +112,7 @@ def simulate_in_pqigould(func, host, job_directory, system_name, destination):
         topology_file="structure_hmr.prmtop", start_rst="Heated_eq.rst",
         input_file="Production.in", start_time=0,
         final_time=500, job_length=50, job_directory=job_directory,
-        cuda_version="8.0.44", binary_location="/home/igould/cuda8amber/amber/bin/pmemd.cuda_SPFP",
+        cuda_version="8.0.44", binary_location="/home/igould/cuda8amber/bin/pmemd.cuda_SPFP",
         pre_simulation_cmd=None, pre_simulation_type="gpu"
     )
     local = local_machine_details(
