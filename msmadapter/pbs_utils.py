@@ -104,14 +104,14 @@ def simulate_in_P100s(func, job_directory, system_name, destination):
 
 def simulate_in_pqigould(func, host, job_directory, system_name, destination):
     pbs = pbs_settings(
-        walltime='192:0:0', nnodes=1, ncpus=1, ngpus=1, mem='2gb',
+        walltime='48:0:0', nnodes=1, ncpus=1, ngpus=1, mem='2gb',
         host=host, queue='pqigould', gpu_type=''
     )
     sim = simulation_details(
         system_name=system_name, inpcrd_file="structure.inpcrd",
         topology_file="structure_hmr.prmtop", start_rst="Heated_eq.rst",
         input_file="Production.in", start_time=0,
-        final_time=500, job_length=50, job_directory=job_directory,
+        final_time=500, job_length=25, job_directory=job_directory,
         cuda_version="8.0.44", binary_location="/home/igould/cuda8amber/bin/pmemd.cuda_SPFP",
         pre_simulation_cmd=None, pre_simulation_type="gpu"
     )
