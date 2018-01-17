@@ -235,19 +235,19 @@ def phosphorylate_pdb_file(pdb_fn, edition_list, pdb_mut_fname, write=True):
     Parameters
     ----------
     pdb_fn: str, Name of the PDB file
-    edition_list: list of tuples, List of the editions to make.
-        Each of the elements in the list has to be a tuple like this:
+    edition_list: list of tuples, The list of the editions to make.
+        Each of the elements in the list has to be a tuple like this one:
             ('SER', 271, 'S1P')
-            1st arg is the resname to change
-            2nd arg is the residue index in the original PDB file, will
-                not be change
+            1st arg is the resname to change 'SER'
+            2nd arg is the residue index in the original PDB file (271),
+                will not be changed
             3rd arg is the new residue name, can be either 'S1P' or 'SEP'
                 to choose between the two possible protonation states of
                 a phosphoserine
     """
     new_pdb = []
     with open(pdb_fn, 'r') as f:
-        pdb = f.readlines()
+        pdb = f.readlines()  # list of lines as str
 
     for line in pdb:
         if 'ATOM' in line:
