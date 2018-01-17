@@ -1,0 +1,12 @@
+Minimize waters
+ &cntrl
+  imin=1,
+  maxcyc=10000,
+  ncyc=5000,
+  cut=12., 
+  ntb=1,
+  ntr=1,
+  ntpr=100,
+  restraintmask = '!(:WAT | :Cl- | Na+)', ! Restrain protein
+  restraint_wt=50.0
+ /

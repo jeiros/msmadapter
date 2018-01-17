@@ -1,0 +1,11 @@
+Minimize with low constraints on protein
+ &cntrl
+  imin=1,
+  maxcyc=10000,
+  ncyc=5000,
+  cut=12.,
+  ntb=1,
+  ntpr=100,
+  restraintmask = '!(:WAT | :Cl- | Na+)', ! Restrain anything that is not water
+  restraint_wt=5.0
+ /
