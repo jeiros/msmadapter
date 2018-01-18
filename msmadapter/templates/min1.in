@@ -7,6 +7,6 @@ Minimize waters
   ntb=1,
   ntr=1,
   ntpr=100,
-  restraintmask = '!(:WAT | :Cl- | Na+)', ! Restrain protein
+  restraintmask = '!(:WAT | :Cl- | :Na+)', ! Restrain protein
   restraint_wt=50.0
  /

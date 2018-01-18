@@ -5,7 +5,8 @@ Minimize with low constraints on protein
   ncyc=5000,
   cut=12.,
   ntb=1,
+  ntr=1,
   ntpr=100,
-  restraintmask = '!(:WAT | :Cl- | Na+)', ! Restrain anything that is not water
+  restraintmask = '!(:WAT | :Cl- | :Na+)', ! Restrain protein
   restraint_wt=5.0
  /
