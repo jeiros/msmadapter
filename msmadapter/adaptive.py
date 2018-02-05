@@ -309,7 +309,8 @@ class App(object):
     def run_GPUs_bash(self, folders, run=True):
         """
         Create a bash script to run the jobs locally in the GPUs
-        Requires pmemd.cuda_SPFP to be installed
+        Requires pmemd.cuda_SPFP to be installed and in the $PATH bash environment variable.
+
         Parameters
         ----------
         folders: str or list, a list of folders (or glob expression) that have the
@@ -319,6 +320,11 @@ class App(object):
         Returns
         -------
         output: str, the output of running the bash script
+
+        Raises
+        ------
+        ValueError: if the number of folders is bigger than the current amount of available GPUs
+            or if the folders variable is not a string or list
         """
         if type(folders) == str:
             folders = glob(folders)
@@ -346,7 +352,8 @@ cd ${curr_dir}
             f.write(bash_cmd)
         # Run bash script
         if run:
-            output = subprocess.check_output(['bash', './run.sh'])
+            output = subprocess.check_output(['bash', './run.sh &'])
+        logger.info('Output of run procees was\n{}\n'.format(output))
         return output
 
 
@@ -356,12 +363,12 @@ cd ${curr_dir}
         as a glob string and the input folder destination
         Parameters
         ----------
-        generator_folder_glob: str, glob expression matching where the generator folders
+        generator_folder_glob: str, A glob expression matching where the generator folders
             are located
 
         Return
         ------
-        spawn_folder_names: list of str, List with the input folders where the files have
+        spawn_folder_names: list of str, A list with the input folders where the files have
             been moved
         """
         spawn_folder_names = []
@@ -385,10 +392,35 @@ cd ${curr_dir}
         if len(src_folders) != len(dst_folders):
             raise ValueError
 
+    def move_trajs_to_folder(self, input_folders):
+        """
+        Move the Production.nc files inside each of the folders passed as a glob to their own subfolders
+        inside the self.app.data_folder directory.
+
+        :param input_folders: str or list of str, A glob expression (or list of str)
+            of all the directories that have Production.nc files in them
+
+        """
+        if type(input_folders) == str:
+            input_folders = glob(input_folders)
+        elif type(input_folders) == list:
+            pass
+        else:
+            raise ValueError('input_folders must be of type str or list')
+        data_folder = os.path.abspath(self.data_folder)
+        for folder in input_folders:
+            dst_folder = os.path.join(data_folder, os.path.basename(folder))
+            create_folder(dst_folder)
+            os.rename(
+                src=os.path.abspath(os.path.join(folder, 'Production.nc')),
+                dst=os.path.join(dst_folder, 'Production.nc')
+            )
+
+
 
 class Adaptive(object):
 
-    def __init__(self, nmin=2, nepochs=20, stride=1, sleeptime=3600,
+    def __init__(self, nmin=2, nepochs=20, stride=1, sleeptime=7200,
                  model=None, app=None, atoms_to_load='all', mode='local',
                  current_epoch=1):
         self.nmin = nmin
@@ -440,7 +472,8 @@ mode : {mode}
 
     def run(self):
         """
-        :return:
+        Run the automatic logic of adaptive sampling locally.
+        The remote automatic run is not implemented.
         """
         if self.mode == 'remote':
             raise NotImplementedError('No auto run for remote jobs.')
@@ -449,7 +482,6 @@ mode : {mode}
             if self.current_epoch == self.nepochs:
                 logger.info('Reached {} epochs. Finishing.'.format(self.current_epoch))
                 finished = True
-
             elif self.app.available_gpus >= self.nmin:
                 n_spawns = self.app.available_gpus
                 if self.current_epoch == 1:
@@ -457,6 +489,8 @@ mode : {mode}
                     gen_folders = '{}/*'.format(self.app.generator_folder)
                     spawn_folders = self.app.move_generators_to_input(gen_folders)
                 else:
+                    # First move possibly finished productions to their data folder
+                    self.app.move_trajs_to_folder(spawn_folders)
                     self.app.update_metadata()
                     self.fit_model()
                     self.spawns = self.respawn_from_MSM(search_type='counts', n_spawns=n_spawns)
@@ -673,7 +707,7 @@ mode : {mode}
                 model = Pipeline([
                     ('feat', DihedralFeaturizer()),
                     ('scaler', RobustScaler()),
-                    ('tICA', tICA(lag_time=lag_time, kinetic_mapping=True, n_components=10)),
+                    ('tICA', tICA(lag_time=lag_time, commute_mapping=True, n_components=10)),
                     ('clusterer', MiniBatchKMeans(n_clusters=200)),
                     ('msm', MarkovStateModel(lag_time=lag_time, ergodic_cutoff='off', reversible_type=None))
                 ])
