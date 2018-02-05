@@ -19,16 +19,17 @@ def pbs_settings(walltime='72:0:0', nnodes=1, ncpus=1, ngpus=1, mem='2gb',
 
 def simulation_details(system_name="protein", inpcrd_file="structure.inpcrd",
                        topology_file="structure.prmtop", start_rst="Heated_eq.rst",
-                       input_file="Production_cmds.in", start_time=0,
+                       input_file="Production.in", start_time=0,
                        final_time=500, job_length=50, job_directory="/work/je714/protein",
-                       cuda_version="8.0.44", binary_location="pmemd.cuda_SPFP",
+                       cuda_version="9.0", binary_location="pmemd.cuda_SPFP",
                        pre_simulation_cmd=None, pre_simulation_type="gpu"):
     if pre_simulation_cmd is None:
         pre_simulation_cmd = [
-            "{} -O -i min1.in -o premin.out -c $inpcrd -p $prmtop -r premin.rst -ref $inpcrd".format(binary_location),
-            "{} -O -i min2.in -o sandermin1.out -c premin.rst -p $prmtop -r sandermin1.rst".format(binary_location),
-            "{} -O -i 02_Heat.in -o 02_Heat.out -c sandermin1.rst -p $prmtop -r 02_Heat.rst -ref sandermin1.rst -x 02_Heat.nc".format(binary_location),
-            "{} -O -i 03_Heat2.in -o 03_Heat2.out -c 02_Heat.rst -p $prmtop -r Heated_eq.rst -ref 02_Heat.rst -x 03_Heat2.nc".format(binary_location)
+            "{} -O -i min1.in -o min1.out -c $inpcrd  -ref $inpcrd  -p $prmtop -r min1.rst".format(binary_location),
+            "{} -O -i min2.in -o min2.out -c min1.rst -ref min1.rst -p $prmtop -r min2.rst ".format(binary_location),
+            "{} -O -i min3.in -o min3.out -c min2.rst -p $prmtop -r min3.rst".format(binary_location),
+            "{} -O -i 02_Heat.in -o 02_Heat.out -c min3.rst -ref min3.rst -p $prmtop -r 02_Heat.rst  -x 02_Heat.nc".format(binary_location),
+            "{} -O -i 03_Heat2.in -o 03_Heat2.out -c 02_Heat.rst -p $prmtop -r Heated_eq.rst -ref 02_Heat.rst -x 03_Heat2.nc".format(binary_location),
         ]
     return dict(
         system_name=system_name,
@@ -93,7 +94,7 @@ def simulate_in_P100s(func, job_directory, system_name, destination):
         topology_file="structure_hmr.prmtop", start_rst="Heated_eq.rst",
         input_file="Production.in", start_time=0,
         final_time=500, job_length=25, job_directory=job_directory,
-        cuda_version="9.0", binary_location="/home/igould/amber16/bin/pmemd.cuda_SPFP",
+        cuda_version="9.0", binary_location="/home/igould/amber/bin/pmemd.cuda_SPFP",
         pre_simulation_cmd=None, pre_simulation_type="gpu"
     )
     local = local_machine_details(
@@ -112,7 +113,7 @@ def simulate_in_pqigould(func, host, job_directory, system_name, destination):
         topology_file="structure_hmr.prmtop", start_rst="Heated_eq.rst",
         input_file="Production.in", start_time=0,
         final_time=500, job_length=25, job_directory=job_directory,
-        cuda_version="9.0", binary_location="/home/igould/amber16/bin/pmemd.cuda_SPFP",
+        cuda_version="9.0", binary_location="/home/igould/amber/bin/pmemd.cuda_SPFP",
         pre_simulation_cmd=None, pre_simulation_type="gpu"
     )
     local = local_machine_details(
