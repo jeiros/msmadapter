@@ -51,5 +51,3 @@ class TestApp(TestAppBase):
         assert os.path.exists(os.path.join(self.app.data_folder, 'e1s1/Production.nc'))
         assert not os.path.exists(os.path.join(self.app.input_folder, 'e1s1/Production.nc'))
 
-    def test_run(self):
-        self.app.run()
