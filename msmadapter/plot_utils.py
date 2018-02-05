@@ -30,7 +30,7 @@ def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1), cmap='m
         labelsize=14, cmap=cmap
     )
 
-    return ax
+    return f, ax
 
 
 def plot_clusters(clusterer, ax=None, obs=(0, 1), base_size=50,

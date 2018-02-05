@@ -4,7 +4,7 @@ import subprocess
 from glob import glob
 from multiprocessing import Pool
 from time import sleep
-
+import datetime
 import mdtraj
 import numpy
 import pandas as pd
@@ -18,7 +18,7 @@ from msmbuilder.io.sampling import sample_states, sample_dimension
 from msmbuilder.msm import MarkovStateModel
 from msmbuilder.preprocessing import RobustScaler
 from sklearn.pipeline import Pipeline
-
+from .plot_utils import plot_spawns, plot_tica_landscape
 from .model_utils import retrieve_feat, retrieve_clusterer, retrieve_MSM, \
     retrieve_scaler, retrieve_decomposer, apply_percentile_search
 from .utils import get_ftrajs, get_sctrajs, get_ttrajs, create_folder, \
@@ -352,7 +352,7 @@ cd ${curr_dir}
             f.write(bash_cmd)
         # Run bash script
         if run:
-            output = subprocess.check_output(['bash', './run.sh &'])
+            output = subprocess.check_output(['bash', './run.sh', '&'])
         logger.info('Output of run procees was\n{}\n'.format(output))
         return output
 
@@ -498,6 +498,11 @@ mode : {mode}
                     self.fit_model()
                     self.spawns = self.respawn_from_MSM(search_type='counts', n_spawns=n_spawns)
                     spawn_folders = self.app.prepare_spawns(self.spawns, self.current_epoch)
+                    # Plot where chosen spawns are in the tICA landscape
+                    f, ax = plot_tica_landscape(self.ttrajs)
+                    plot_spawns(self.spawns, self.ttrajs, ax=ax)
+                    fig_fname = '{today}_e{epoch}_spawns.pdf'.format(today=datetime.date.today().isoformat(), epoch=self.current_epoch)
+                    f.savefig(fig_fname)
 
                 self.app.run_GPUs_bash(
                     folders=spawn_folders
