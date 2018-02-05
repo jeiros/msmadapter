@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('agg')
 from matplotlib import pyplot as pp
 import numpy
 import msmexplorer as msme
