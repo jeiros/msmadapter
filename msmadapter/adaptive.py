@@ -490,7 +490,8 @@ mode : {mode}
                     spawn_folders = self.app.move_generators_to_input(gen_folders)
                 else:
                     # First move possibly finished productions to their data folder
-                    self.app.move_trajs_to_folder(spawn_folders)
+                    try:
+                        self.app.move_trajs_to_folder(spawn_folders)
                     self.app.update_metadata()
                     self.fit_model()
                     self.spawns = self.respawn_from_MSM(search_type='counts', n_spawns=n_spawns)
