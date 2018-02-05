@@ -3,7 +3,7 @@ import os
 import pandas as pd
 
 from shutil import rmtree
-from ..pbs_utils import simulate_in_P100s
+
 
 def teardown_module():
     rmtree('data_app/generators')
@@ -31,16 +31,9 @@ class TestApp(TestAppBase):
         assert os.path.isdir(self.app.model_folder)
         assert os.path.isdir(self.app.build_folder)
 
-
-    def test_build_metadata_1(self):
-        # Build metadata automatically
-        output = self.app.build_metadata(meta=None)
-        assert isinstance(output, pd.DataFrame)
-
-
-    def test_build_metadata_2(self):
+    def test_build_metadata(self):
         # User defined meta
-        output =  self.app.build_metadata(meta=meta)
+        output =  self.app.build_metadata(meta=self.meta)
         assert isinstance(output, pd.DataFrame)
 
 
@@ -52,3 +45,11 @@ class TestApp(TestAppBase):
             assert type(f) == str
             assert os.path.isdir(f)
 
+    def test_move_generators_to_input(self):
+        folders = self.app.input_folder + '/*'
+        self.app.move_trajs_to_folder(folders)
+        assert os.path.exists(os.path.join(self.app.data_folder, 'e1s1/Production.nc'))
+        assert not os.path.exists(os.path.join(self.app.input_folder, 'e1s1/Production.nc'))
+
+    def test_run(self):
+        self.app.run()
