@@ -435,6 +435,8 @@ class Adaptive(object):
             raise ValueError('self.app is not an App object')
 
         self.model_pkl_fname = os.path.join(self.app.model_folder, 'model.pkl')
+        if self.app.meta is not None:
+            self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
         self.model = self.build_model(model)
         self.ttrajs = None
         self.traj_dict = None
@@ -445,8 +447,6 @@ class Adaptive(object):
             raise ValueError('mode has to be local or remote')
         else:
             self.mode = mode
-        if self.app.meta is not None:
-            self.timestep = (self.app.meta['step_ps'].unique()[0] * self.stride) / 1000  # in ns
 
     def __repr__(self):
 
