@@ -5,7 +5,7 @@ import numpy
 import msmexplorer as msme
 
 
-def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red', base_size=10, label=None):
+def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red', base_size=100, label=None):
     if ax is None:
         ax = pp.gca()
 
@@ -29,7 +29,7 @@ def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1), cmap='m
         txx, ax=ax, obs=obs, alpha=1,
         n_levels=6,
         xlabel='tIC 1', ylabel='tIC 2',
-        labelsize=14, cmap=cmap
+        labelsize=14, cmap=cmap, vmin=1e-25
     )
 
     return f, ax
