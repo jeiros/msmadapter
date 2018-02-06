@@ -211,8 +211,9 @@ class App(object):
                         self.meta.loc[traj_id]['top_fn']
                     )
                 ),
-                frame1=frame_id,
-                frame2=frame_id,
+                # Cpptraj uses 1-indexed frame number
+                frame1=frame_id + 1,
+                frame2=frame_id + 1,
                 outfile=outfile,
                 path='script.cpptraj',
                 run=True
