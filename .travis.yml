@@ -15,10 +15,12 @@ install:
   - pip install coveralls
 
 
+env:
+  - pmemd.cuda_SPFP=$(which sander)
+
 # command to run tests, e.g. python setup.py test
 script:
   - cd msmadapter/tests
-  - export pmemd.cuda_SPFP=$(which sander)
   - nosetests --with-coverage --cover-package=msmadapter
 
 # After you create the Github repo and add it to Travis, run the
