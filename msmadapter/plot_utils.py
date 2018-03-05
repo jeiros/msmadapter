@@ -5,7 +5,7 @@ import numpy
 import msmexplorer as msme
 
 
-def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red', base_size=100, label=None):
+def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red', base_size=100):
     if ax is None:
         ax = pp.gca()
 

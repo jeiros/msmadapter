@@ -1,6 +1,12 @@
-from ..adaptive import App
+from ..adaptive import App, Adaptive
 import logging
 from msmbuilder.io import NumberedRunsParser, gather_metadata
+from msmbuilder.featurizer import DihedralFeaturizer
+from msmbuilder.preprocessing import MinMaxScaler
+from msmbuilder.decomposition import tICA
+from msmbuilder.cluster import MiniBatchKMeans
+from msmbuilder.msm import MarkovStateModel
+from sklearn.pipeline import Pipeline
 import os
 from ..adaptive import create_folder
 
@@ -13,6 +19,24 @@ parser = NumberedRunsParser(
                     step_ps=200
 )
 meta = gather_metadata('/'.join(['data_app/runs/', '*nc']), parser)
+
+
+
+model = Pipeline([
+    ('feat', DihedralFeaturizer()),
+    ('scaler', MinMaxScaler()),
+    ('tICA', tICA(lag_time=1, n_components=4)),
+    ('clusterer', MiniBatchKMeans(n_clusters=5)),
+    ('msm', MarkovStateModel(lag_time=1, n_timescales=4))
+])
+
+
+spawns = [
+    (0, 1),
+]
+epoch = 1
+
+
 
 class TestAppBase:
 
@@ -37,3 +61,13 @@ class TestAppBase:
             create_folder(os.path.join(self.app.input_folder, f))
             with open(fname, 'w') as f:
                 f.write('somebytes')
+
+
+class TestAdaptiveBase:
+
+    def __init__(self):
+
+        self.adapt = Adaptive(
+            app=TestAppBase().app,
+            model=model
+        )

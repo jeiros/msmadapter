@@ -5,7 +5,7 @@ from mdtraj import load
 from ..utils import get_ftrajs, get_sctrajs, get_ttrajs, traj_from_stateinds, \
     write_production_file, write_cpptraj_script, write_tleap_script, \
     create_folder, create_symlinks, hmr_prmtop
-from .test_adaptive import meta, spawns
+from . import meta, spawns
 import numpy
 import os
 from shutil import rmtree
@@ -20,7 +20,7 @@ def teardown_module():
 class TestUtils:
 
     def setUp(self):
-        numpy.random.seed(42)
+        numpy.random.seed(12)
         self.top = 'data_app/runs/structure.prmtop'
         self.traj_1 = 'data_app/runs/run-000.nc'
         self.traj_2 = 'data_app/runs/run-001.nc'
@@ -95,4 +95,3 @@ class TestUtils:
     def test_hmr_prmtop(self):
         new_top = hmr_prmtop(self.top, save=False)
         assert isinstance(new_top, AmberParm)
-

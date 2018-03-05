@@ -16,7 +16,7 @@ install:
 
 
 env:
-  - pmemd.cuda_SPFP=$(which sander)
+  - pmemd.cuda_SPFP=sander
 
 # command to run tests, e.g. python setup.py test
 script:
