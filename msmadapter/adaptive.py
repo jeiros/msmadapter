@@ -153,7 +153,7 @@ class App(object):
                     step_ps=self.timestep
                 )
         meta = gather_metadata('{}/e*/*nc'.format(self.data_folder), parser)
-        meta['top_fn'] = glob('{}/e*/structure.prmtop'.format(self.input_folder))
+        meta['top_fn'] = sorted(glob('{}/e*/structure.prmtop'.format(self.input_folder)))
         self.meta = meta
 
     def prepare_spawns(self, spawns, epoch):

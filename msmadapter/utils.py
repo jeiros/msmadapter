@@ -223,7 +223,7 @@ def gather_metadata(fn_glob, parser):
     parser : descendant of _Parser
         Object that handles conversion of filenames to metadata rows.
     """
-    meta = pd.DataFrame(parser.parse_fn(fn) for fn in glob.iglob(fn_glob))
+    meta = pd.DataFrame(parser.parse_fn(fn) for fn in sorted(glob.iglob(fn_glob)))
     return meta.set_index(parser.index)
 
 
