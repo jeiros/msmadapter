@@ -20,7 +20,7 @@ def plot_spawns(inds, tica_trajs, ax=None, obs=(0, 1), color='red', base_size=10
     return ax
 
 
-def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1), cmap='magma'):
+def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1), cmap='magma', alpha=1):
     """
     Plots a 2D landscape of the tica trajectories
     :param tica_trajs: dictionary of tica trajectories
@@ -32,10 +32,12 @@ def plot_tica_landscape(tica_trajs, ax=None, figsize=(7, 5), obs=(0, 1), cmap='m
     """
     if ax is None:
         f, ax = pp.subplots(figsize=figsize)
+    else:
+        f = pp.gcf()
 
     txx = numpy.concatenate(list(tica_trajs.values()))
     ax = msme.plot_free_energy(
-        txx, ax=ax, obs=obs, alpha=1,
+        txx, ax=ax, obs=obs, alpha=alpha,
         n_levels=6,
         xlabel='tIC 1', ylabel='tIC 2',
         labelsize=14, cmap=cmap, vmin=1e-25
